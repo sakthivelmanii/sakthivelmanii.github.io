@@ -189,7 +189,7 @@
     <div id="prListModal" class="modal-overlay hidden">
         <div class="modal-content w-11/12 md:w-3/4 lg:w-1/2 p-6 rounded-xl shadow-2xl">
             <div class="flex justify-between items-center border-b pb-3 mb-4">
-                <h3 id="modalTitle" class="text-2xl font-bold text-gray-800">PR List</h3>
+                <h3 id="modalTitle" class="2xl font-bold text-gray-800">PR List</h3>
                 <button onclick="closeModal('prListModal')" class="text-gray-500 hover:text-gray-700 text-3xl font-light leading-none">&times;</button>
             </div>
             <div id="prListContainer" class="space-y-4">
@@ -242,9 +242,8 @@
     </div>
 
     <script>
-        // Register the datalabels plugin globally
-        Chart.register(ChartDataLabels);
-        
+        // NOTE: ChartDataLabels registration moved into chart configs
+
         // GLOBAL CONSTANT: Maximum number of PRs to fetch per page during pagination
         const PR_PAGE_SIZE = 100;
 
@@ -370,7 +369,7 @@
         }
 
         /**
-         * Processes PR edges to group review reply counts into specified buckets (0, 1-5, 6-10, etc.)
+         * Processes PR edges to group review thread counts into specified buckets (0, 1-5, 6-10, etc.)
          */
         function processCommentDistribution(prEdges) {
             // Define buckets up to 20, plus a bucket for >20
@@ -599,7 +598,7 @@
             } else {
                 prs.forEach(pr => {
                     const node = pr.node;
-                    const language = node.repository?.primaryLanguage?.name || 'Unknown';
+                    const language = pr.node.repository?.primaryLanguage?.name || 'Unknown';
                     const repoName = node.repository?.nameWithOwner || 'Unknown Repository';
                     const date = formatReadableDate(node.createdAt);
                     
@@ -686,10 +685,10 @@
             let prs = [];
             let totalCount = 0;
 
-            if (label === 'Authored PRs') {
+            if (label === 'PRs Authored') {
                 prs = prDataCache.authored;
                 totalCount = chart.data.datasets[0].data[clickedIndex];
-            } else if (label === 'Reviewed PRs') {
+            } else if (label === 'PRs Reviewed') {
                 prs = prDataCache.reviewed;
                 totalCount = chart.data.datasets[0].data[clickedIndex];
             }
@@ -710,7 +709,7 @@
                 return prLanguage === language;
             });
 
-            showPrListModal(`Authored PRs in ${language}`, filteredPrs, filteredPrs.length);
+            showPrListModal(`PRs Authored in ${language}`, filteredPrs, filteredPrs.length);
         }
 
         /**
@@ -726,7 +725,7 @@
                 return prLanguage === language;
             });
 
-            showPrListModal(`Reviewed PRs in ${language}`, filteredPrs, filteredPrs.length);
+            showPrListModal(`PRs Reviewed in ${language}`, filteredPrs, filteredPrs.length);
         }
         
         /**
@@ -754,14 +753,29 @@
                 }
             });
 
-            showPrListModal(`Authored PRs with ${bucketLabel} review replies`, filteredPrs, filteredPrs.length);
+            showPrListModal(`PRs Authored with ${bucketLabel} review replies`, filteredPrs, filteredPrs.length);
         }
 
 
         // --- Charting and UI Rendering ---
 
         /**
-         * Renders or updates the Pie Chart for Authored vs. Reviewed PRs.
+         * Draws fallback text when no data is available for a chart.
+         */
+        function drawNoDataFallback(ctx, title) {
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            ctx.font = '16px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#6B7280'; // Gray 500
+            ctx.fillText(title, ctx.canvas.width / 2, ctx.canvas.height / 2 - 10);
+            ctx.fillText("No data available for the selected year.", ctx.canvas.width / 2, ctx.canvas.height / 2 + 15);
+        }
+        
+        // --- IMPORTANT: Chart.js needs Datalabels registered globally for configurations to work ---
+        Chart.register(ChartDataLabels);
+
+        /**
+         * Renders or updates the Pie Chart for PRs Authored vs. PRs Reviewed.
          */
         function renderChart(authoredCount, reviewedCount, year) {
             const canvas = document.getElementById('prPieChart');
@@ -772,8 +786,9 @@
                 showMessage("Dashboard generated data, but failed to draw Chart 1.", 'error');
                 return;
             }
-
+            
             const total = authoredCount + reviewedCount;
+            const chartTitle = `PRs Authored vs. Reviewed (${year})`;
             
             summaryTitle.textContent = `${year} Activity Summary`;
             totalSummary.textContent = total > 0 
@@ -783,9 +798,15 @@
             if (prChart) {
                 prChart.destroy(); 
             }
+            
+            // Exit early if no data
+            if (total === 0) {
+                drawNoDataFallback(ctx, chartTitle);
+                return; 
+            }
 
             const data = {
-                labels: ['Authored PRs', 'Reviewed PRs'],
+                labels: ['PRs Authored', 'PRs Reviewed'],
                 datasets: [{
                     label: 'PR Activity',
                     data: [authoredCount, reviewedCount],
@@ -796,7 +817,7 @@
                     hoverOffset: 8
                 }]
             };
-
+            
             const config = {
                 type: 'pie',
                 data: data,
@@ -806,7 +827,7 @@
                     maintainAspectRatio: false, 
                     layout: { 
                         padding: {
-                            top: 0, // Keep layout padding 0
+                            top: 0, 
                             bottom: 0
                         }
                     },
@@ -815,9 +836,7 @@
                             position: 'bottom', // MOVED TO BOTTOM
                             labels: { 
                                 color: '#1f2937',
-                                padding: 30, // Padding around legend items (horizontal spacing)
-                                usePointStyle: true,
-                                padding: { top: 0, bottom: 20 } // Added bottom padding to separate legend from pie
+                                padding: 5 // Default padding
                             }
                         },
                         tooltip: {
@@ -835,12 +854,12 @@
                         },
                         title: {
                             display: true,
-                            text: `Authored vs. Reviewed PRs (${year})`, 
+                            text: chartTitle, 
                             color: '#1D4ED8',
                             font: { size: 16 },
                             padding: {
                                 top: 10,
-                                bottom: 20 // Added bottom padding to separate title from legend
+                                bottom: 40 // INCREASED PADDING
                             }
                         },
                         // Display labels INSIDE the segments
@@ -855,6 +874,10 @@
                             anchor: 'center', 
                             align: 'center',  
                             offset: 0, 
+                            display: (context) => {
+                                // Only display if value is > 0
+                                return context.dataset.data[context.dataIndex] > 0;
+                            }
                         }
                     }
                 }
@@ -864,7 +887,7 @@
         }
 
         /**
-         * Renders or updates the Language Pie Chart for Authored PRs.
+         * Renders or updates the Language Pie Chart for PRs Authored.
          */
         function renderAuthoredLanguageChart(languageCounts, year) {
             const canvas = document.getElementById('languagePieChart');
@@ -878,16 +901,23 @@
             const sortedLanguages = Object.entries(languageCounts)
                 .sort(([, a], [, b]) => b - a);
 
-            const labels = sortedLanguages.map(([name]) => name);
-            const dataValues = sortedLanguages.map(([, count]) => count);
-            const total = dataValues.reduce((sum, count) => sum + count, 0);
+            let labels = sortedLanguages.map(([name]) => name);
+            let dataValues = sortedLanguages.map(([, count]) => count);
+            let total = dataValues.reduce((sum, count) => sum + count, 0);
+            const chartTitle = `PRs Authored Language Breakdown (${year})`;
 
             languageSummary.textContent = total > 0 
-                ? `Authored PRs Language Breakdown (${total} PRs)` 
-                : `No authored PRs with primary language found.`; 
+                ? `PRs Authored Language Breakdown (${total} PRs)` 
+                : `No PRs authored with primary language found.`; 
 
             if (languageChart) {
                 languageChart.destroy();
+            }
+            
+            // Exit early if no data
+            if (total === 0) {
+                drawNoDataFallback(ctx, chartTitle);
+                return; 
             }
 
             const chartColors = [
@@ -898,7 +928,7 @@
             const data = {
                 labels: labels,
                 datasets: [{
-                    label: 'Authored PR Language Count',
+                    label: 'PRs Authored Language Count',
                     data: dataValues,
                     backgroundColor: backgroundColors,
                     hoverOffset: 8
@@ -914,7 +944,7 @@
                     maintainAspectRatio: false,
                     layout: { 
                         padding: {
-                            top: 0, // Remove layout padding
+                            top: 0, 
                             bottom: 0
                         }
                     },
@@ -923,15 +953,14 @@
                             position: 'bottom', // MOVED TO BOTTOM
                             labels: { 
                                 color: '#1f2937',
-                                padding: 30, // Padding around legend items
-                                usePointStyle: true,
-                                padding: { top: 0, bottom: 20 } // Added bottom padding to separate legend from pie
+                                padding: 5 // Default padding
                             }
                         },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
                                     const label = context.label || '';
+                                    
                                     if (label) {
                                         let value = context.parsed;
                                         let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
@@ -943,11 +972,11 @@
                         },
                         title: {
                             display: true,
-                            text: `Authored PR Language Breakdown (${year})`,
+                            text: chartTitle,
                             color: '#1D4ED8',
                             font: { size: 16 },
                             padding: {
-                                bottom: 20 // Added bottom padding to separate title/legend from pie chart
+                                bottom: 40 // INCREASED PADDING
                             }
                         },
                         // Display labels OUTSIDE with line
@@ -962,19 +991,20 @@
                             align: 'end',
                             offset: 4, 
                             display: (context) => {
-                                // Only show if the slice is large enough, or force show for critical data
-                                return dataValues[context.dataIndex] > 0;
+                                // Only display if value is > 0
+                                return context.dataset.data[context.dataIndex] > 0;
                             }
                         }
                     }
                 }
             };
 
+
             languageChart = new Chart(ctx, config);
         }
 
         /**
-         * Renders or updates the Language Pie Chart for Reviewed PRs.
+         * Renders or updates the Language Pie Chart for PRs Reviewed.
          */
         function renderReviewedLanguageChart(languageCounts, year) {
             const canvas = document.getElementById('reviewedLanguagePieChart');
@@ -988,16 +1018,24 @@
             const sortedLanguages = Object.entries(languageCounts)
                 .sort(([, a], [, b]) => b - a);
 
-            const labels = sortedLanguages.map(([name]) => name);
-            const dataValues = sortedLanguages.map(([, count]) => count);
-            const total = dataValues.reduce((sum, count) => sum + count, 0);
+            let labels = sortedLanguages.map(([name]) => name);
+            let dataValues = sortedLanguages.map(([, count]) => count);
+            let total = dataValues.reduce((sum, count) => sum + count, 0);
+            const chartTitle = `PRs Reviewed Language Breakdown (${year})`;
+
 
             reviewedLanguageSummary.textContent = total > 0 
-                ? `Reviewed PRs Language Breakdown (${total} PRs analyzed)` 
-                : `No reviewed PRs with primary language found.`; 
+                ? `PRs Reviewed Language Breakdown (${total} PRs analyzed)` 
+                : `No PRs reviewed with primary language found.`; 
 
             if (reviewedLanguageChart) {
                 reviewedLanguageChart.destroy();
+            }
+
+            // Exit early if no data
+            if (total === 0) {
+                drawNoDataFallback(ctx, chartTitle);
+                return; 
             }
 
             // Using a distinct color palette
@@ -1006,10 +1044,11 @@
             ];
             const backgroundColors = labels.map((_, index) => chartColors[index % chartColors.length]);
 
+
             const data = {
                 labels: labels,
                 datasets: [{
-                    label: 'Reviewed PR Language Count',
+                    label: 'PRs Reviewed Language Count',
                     data: dataValues,
                     backgroundColor: backgroundColors,
                     hoverOffset: 8
@@ -1025,7 +1064,7 @@
                     maintainAspectRatio: false,
                     layout: { 
                         padding: {
-                            top: 0, // Remove layout padding
+                            top: 0, 
                             bottom: 0
                         }
                     },
@@ -1034,9 +1073,7 @@
                             position: 'bottom', // MOVED TO BOTTOM
                             labels: { 
                                 color: '#1f2937',
-                                padding: 30, // Padding around legend items
-                                usePointStyle: true,
-                                padding: { top: 0, bottom: 20 } // Added bottom padding to separate legend from pie
+                                padding: 5 // Default padding
                             }
                         },
                         tooltip: {
@@ -1054,11 +1091,11 @@
                         },
                         title: {
                             display: true,
-                            text: `Reviewed PR Language Breakdown (${year})`,
+                            text: chartTitle,
                             color: '#1D4ED8',
                             font: { size: 16 },
                             padding: {
-                                bottom: 20 // Added bottom padding to separate title/legend from pie chart
+                                bottom: 40 // INCREASED PADDING
                             }
                         },
                         // Display labels OUTSIDE with line
@@ -1073,8 +1110,8 @@
                             align: 'end',
                             offset: 4, 
                             display: (context) => {
-                                // Only show if the slice is large enough, or force show for critical data
-                                return dataValues[context.dataIndex] > 0;
+                                // Only display if value is > 0
+                                return context.dataset.data[context.dataIndex] > 0;
                             }
                         }
                     }
@@ -1085,7 +1122,7 @@
         }
 
         /**
-         * Renders or updates the Bar Chart for Authored PR Discussion Volume.
+         * Renders or updates the Bar Chart for PRs Authored Discussion Volume.
          */
         function renderCommentDistributionChart(dataObject, year) {
             const canvas = document.getElementById('commentBarChart');
@@ -1095,13 +1132,21 @@
                 console.error("Failed to get 2D rendering context for Chart 4.");
                 return;
             }
+            
+            const chartTitle = `PRs Authored Review Reply Distribution (${year})`;
 
             commentSummary.textContent = dataObject.totalPRsAnalyzed > 0 
-                ? `Total Authored PRs analyzed: ${dataObject.totalPRsAnalyzed}` 
-                : `No Authored PRs found for analysis.`;
+                ? `Total PRs Authored analyzed: ${dataObject.totalPRsAnalyzed}` 
+                : `No PRs Authored found for analysis.`;
 
             if (commentChart) {
                 commentChart.destroy();
+            }
+            
+            // Exit early if no data
+            if (dataObject.totalPRsAnalyzed === 0) {
+                drawNoDataFallback(ctx, chartTitle);
+                return; 
             }
 
             const data = {
@@ -1125,7 +1170,7 @@
                     indexAxis: 'y', // Horizontal bars
                     layout: { 
                         padding: {
-                            top: 0, // Remove layout padding
+                            top: 0, 
                             bottom: 0
                         }
                     },
@@ -1160,7 +1205,7 @@
                         },
                         title: {
                             display: true,
-                            text: `Authored PR Review Reply Distribution (${year})`,
+                            text: chartTitle,
                             color: '#1D4ED8',
                             font: { size: 16 },
                             padding: {
@@ -1174,11 +1219,16 @@
                             align: 'end',
                             offset: 4,
                             formatter: (value) => value > 0 ? value : '',
-                            font: { weight: 'bold', size: 12 }
+                            font: { weight: 'bold', size: 12 },
+                            display: (context) => {
+                                // Only display if value is > 0
+                                return context.dataset.data[context.dataIndex] > 0;
+                            }
                         }
                     }
                 }
             };
+
 
             commentChart = new Chart(ctx, config);
         }
@@ -1197,11 +1247,11 @@
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200 text-gray-800">
                         <tr>
-                            <td class="px-6 py-4 whitespace-nowrap font-medium text-blue-600">Total Authored PRs</td>
+                            <td class="px-6 py-4 whitespace-nowrap font-medium text-blue-600">Total PRs Authored</td>
                             <td class="px-6 py-4 whitespace-nowrap">${authoredCount}</td>
                         </tr>
                         <tr>
-                            <td class="px-6 py-4 whitespace-nowrap font-medium text-teal-600">Total Reviewed PRs</td>
+                            <td class="px-6 py-4 whitespace-nowrap font-medium text-teal-600">Total PRs Reviewed</td>
                             <td class="px-6 py-4 whitespace-nowrap">${reviewedCount}</td>
                         </tr>
                         <tr>
@@ -1284,6 +1334,15 @@
         // --- Initial Setup ---
         window.onload = function () {
             populateYearSelector();
+
+            // Logic to check for URL query parameter 'username'
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlUsername = urlParams.get('username');
+
+            if (urlUsername) {
+                // Overwrite the default value with the URL parameter if it exists
+                usernameInput.value = urlUsername;
+            }
             
             // Add Esc key listener to close modals
             document.addEventListener('keydown', function(event) {
