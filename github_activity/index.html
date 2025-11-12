@@ -167,12 +167,25 @@
                 </div>
             </div>
             
-            <!-- Overall Contribution Totals Table (Full Width) -->
-            <div class="max-w-xl mx-auto">
-                <div class="card p-6 rounded-xl"> 
-                    <h3 class="text-xl font-semibold mb-4 text-blue-600 border-b pb-2">Overall Contribution Totals</h3>
-                    <div id="overallTotalsTable">
-                        <!-- Content will be rendered here -->
+            <!-- Table Container Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Column 1: Overall Contribution Totals Table -->
+                <div class="col-span-1 max-w-xl mx-auto lg:mx-0">
+                    <div class="card p-6 rounded-xl"> 
+                        <h3 class="text-xl font-semibold mb-4 text-blue-600 border-b pb-2">Overall Contribution Totals</h3>
+                        <div id="overallTotalsTable">
+                            <!-- Content will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Column 2: New Commit Contributions Table -->
+                <div class="col-span-1 max-w-xl mx-auto lg:mx-0">
+                    <div class="card p-6 rounded-xl">
+                        <h3 class="text-xl font-semibold mb-4 text-blue-600 border-b pb-2">Commit Contributions (Top 50 Repos)</h3>
+                        <div id="repoCommitTable">
+                            <!-- Content will be rendered here -->
+                        </div>
                     </div>
                 </div>
             </div>
@@ -185,15 +198,15 @@
         </div>
     </div>
     
-    <!-- PR List Modal -->
+    <!-- PR List Modal - Reused for Commits -->
     <div id="prListModal" class="modal-overlay hidden">
         <div class="modal-content w-11/12 md:w-3/4 lg:w-1/2 p-6 rounded-xl shadow-2xl">
             <div class="flex justify-between items-center border-b pb-3 mb-4">
-                <h3 id="modalTitle" class="2xl font-bold text-gray-800">PR List</h3>
+                <h3 id="modalTitle" class="2xl font-bold text-gray-800">Details List</h3>
                 <button onclick="closeModal('prListModal')" class="text-gray-500 hover:text-gray-700 text-3xl font-light leading-none">&times;</button>
             </div>
             <div id="prListContainer" class="space-y-4">
-                <!-- PR items will be injected here -->
+                <!-- PR or Commit items will be injected here -->
             </div>
             <div class="mt-6 text-right">
                 <button onclick="closeModal('prListModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-150">Close</button>
@@ -246,6 +259,7 @@
 
         // GLOBAL CONSTANT: Maximum number of PRs to fetch per page during pagination
         const PR_PAGE_SIZE = 100;
+        // const COMMIT_LIST_LIMIT = 100; // No longer needed for unused commit modal
 
         const patInput = document.getElementById('pat');
         const usernameInput = document.getElementById('username');
@@ -269,6 +283,7 @@
         
         // NEW table containers
         const overallTotalsTable = document.getElementById('overallTotalsTable');
+        const repoCommitTable = document.getElementById('repoCommitTable'); // NEW TABLE ELEMENT
         const patInfoModal = document.getElementById('patInfoModal');
         
         let prChart = null;
@@ -536,6 +551,26 @@
                 totalCount: totalCount
             };
         }
+        
+        /**
+         * Fetches the user's primary email address (needed for commit history filtering).
+         */
+        async function fetchAuthorEmail(token) {
+            const query = `
+                query {
+                    viewer {
+                        email
+                    }
+                }
+            `;
+            try {
+                const data = await runGraphQLQuery(token, query);
+                return data.viewer.email;
+            } catch (error) {
+                console.error("Could not fetch user email for commit filtering:", error);
+                return null;
+            }
+        }
 
 
         /**
@@ -546,12 +581,20 @@
             const dateRangeSearch = `created:${dateOnlyStart}..${dateOnlyEnd}`;
 
             // --- 1. Fetch Totals and Rate Limit (Non-Paginated) ---
-            // Removed PR review and commit count from this query as they are retrieved via search or are non-comparable
             const totalsQuery = `
                 query {
                     user(login: "${username}") {
                         contributionsCollection(from: "${dateTimeStart}", to: "${dateTimeEnd}") {
                             totalCommitContributions
+                            commitContributionsByRepository(maxRepositories: 50) {
+                                repository {
+                                    nameWithOwner
+                                    isFork
+                                }
+                                contributions {
+                                    totalCount
+                                }
+                            }
                         }
                     }
                     rateLimit {
@@ -567,11 +610,11 @@
             const rateLimit = nonPaginatedData.rateLimit;
 
 
-            // --- 2. Fetch ALL Authored PRs (Merged only, Paginated) ---
+            // --- 2. Fetch ALL PRs Authored (Merged only, Paginated) ---
             const authoredQuery = `is:pr is:merged author:${username} ${dateRangeSearch}`;
             const authoredPRData = await fetchAllPRs(token, authoredQuery);
 
-            // --- 3. Fetch ALL Reviewed PRs (Paginated) ---
+            // --- 3. Fetch ALL PRs Reviewed (Paginated) ---
             const reviewedQuery = `is:pr reviewed-by:${username} -author:${username} ${dateRangeSearch}`;
             const reviewedPRData = await fetchAllPRs(token, reviewedQuery);
             
@@ -599,7 +642,7 @@
                 prs.forEach(pr => {
                     const node = pr.node;
                     const language = pr.node.repository?.primaryLanguage?.name || 'Unknown';
-                    const repoName = node.repository?.nameWithOwner || 'Unknown Repository';
+                    const repoName = pr.node.repository?.nameWithOwner || 'Unknown Repository';
                     const date = formatReadableDate(node.createdAt);
                     
                     const reviewThreadCount = node.reviewThreads ? node.reviewThreads.totalCount : 0;
@@ -623,6 +666,11 @@
 
             prListModal.classList.remove('hidden');
         }
+        
+        /**
+         * The old showCommitListModal function is removed as click is no longer supported.
+         */
+
         
         function closeModal(modalId) {
             document.getElementById(modalId).classList.add('hidden');
@@ -1264,6 +1312,65 @@
             overallTotalsTable.innerHTML = table;
         }
 
+        /**
+         * Renders the Commit Contributions Per Repository table.
+         */
+        function renderRepoCommits(contributionsByRepo, currentUsername) {
+            if (!contributionsByRepo || contributionsByRepo.length === 0) {
+                repoCommitTable.innerHTML = '<p class="text-center text-gray-500 py-4">No commit contributions found.</p>';
+                return;
+            }
+            
+            // Filter: Exclude repositories owned by the current user
+            const externalContributions = contributionsByRepo
+                .filter(item => {
+                    const owner = item.repository.nameWithOwner.split('/')[0];
+                    return owner.toLowerCase() !== currentUsername.toLowerCase();
+                });
+
+            const sortedContributions = externalContributions
+                // Sort by commit count descending
+                .sort((a, b) => b.contributions.totalCount - a.contributions.totalCount);
+
+            const tableRows = sortedContributions.map(item => {
+                const totalCount = item.contributions.totalCount;
+                const repoName = item.repository.nameWithOwner;
+                
+                // NO CLICK ACTION HERE
+
+                return `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${repoName}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                            ${totalCount}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const table = `
+                <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repository</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Commits</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200 text-gray-800">
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            repoCommitTable.innerHTML = table;
+        }
+        
+        /**
+         * REMOVED: showRepoCommitsModal function as the click action is removed.
+         */
+
+
         // --- Main Controller ---
 
         async function generateDashboard() {
@@ -1297,6 +1404,7 @@
                 prDataCache.reviewed = data.reviewed.edges;
                 const authoredCount = data.authored.totalCount;
                 const reviewedCount = data.reviewed.totalCount;
+                const commitContributionsByRepo = data.contributions.commitContributionsByRepository; 
 
                 // 4. Process Data for Charts
                 const authoredLanguageCounts = processLanguageData(prDataCache.authored);
@@ -1305,6 +1413,7 @@
                 
                 // 5. Render All UI Components (using a slight delay to ensure canvas rendering)
                 renderOverallTotals(data, authoredCount, reviewedCount);
+                renderRepoCommits(commitContributionsByRepo, username); // PASSING USERNAME HERE
                 renderChart(authoredCount, reviewedCount, year);
                 renderAuthoredLanguageChart(authoredLanguageCounts, year);
                 renderReviewedLanguageChart(reviewedLanguageCounts, year);
