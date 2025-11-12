@@ -1421,6 +1421,12 @@
 
                 dashboardArea.classList.remove('hidden');
                 showMessage("Dashboard successfully generated!", 'success');
+                
+                // --- UPDATE URL QUERY PARAMETER ---
+                const url = new URL(window.location.href);
+                url.searchParams.set('username', username);
+                window.history.replaceState({}, '', url.toString());
+                // ----------------------------------
 
             } catch (error) {
                 console.error(error);
