@@ -136,7 +136,6 @@
                 
                 <!-- Chart 1: Authored vs Reviewed (Pie Chart) - CLICKABLE -->
                 <div class="card p-6 rounded-xl chart-col">
-                    <!-- Added mb-6 for spacing below the legend/title -->
                     <div class="relative max-w-full mx-auto h-72 cursor-pointer mb-6" onclick="handleChartClickWrapper(event, prChart)"> 
                         <canvas id="prPieChart"></canvas>
                     </div>
@@ -805,10 +804,19 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false, 
+                    layout: { 
+                        padding: {
+                            top: 0, // Remove padding from the layout
+                            bottom: 0
+                        }
+                    },
                     plugins: {
                         legend: {
                             position: 'top',
-                            labels: { color: '#1f2937' }
+                            labels: { 
+                                color: '#1f2937',
+                                padding: 30 // Increased padding around legend items to create space below the legend box
+                            }
                         },
                         tooltip: {
                             callbacks: {
@@ -898,10 +906,19 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: { 
+                        padding: {
+                            top: 0, // Remove padding from the layout
+                            bottom: 0
+                        }
+                    },
                     plugins: {
                         legend: {
                             position: 'top',
-                            labels: { color: '#1f2937' }
+                            labels: { 
+                                color: '#1f2937',
+                                padding: 30 // Increased padding around legend items
+                            }
                         },
                         tooltip: {
                             callbacks: {
@@ -995,10 +1012,19 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: { 
+                        padding: {
+                            top: 0, // Remove padding from the layout
+                            bottom: 0
+                        }
+                    },
                     plugins: {
                         legend: {
                             position: 'top',
-                            labels: { color: '#1f2937' }
+                            labels: { 
+                                color: '#1f2937',
+                                padding: 30 // Increased padding around legend items
+                            }
                         },
                         tooltip: {
                             callbacks: {
@@ -1081,6 +1107,12 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     indexAxis: 'y', // Horizontal bars
+                    layout: { 
+                        padding: {
+                            top: 0, // Remove padding from the layout
+                            bottom: 0
+                        }
+                    },
                     scales: {
                         x: {
                             beginAtZero: true,
@@ -1114,7 +1146,11 @@
                             display: true,
                             text: `Authored PR Review Reply Distribution (${year})`,
                             color: '#1D4ED8',
-                            font: { size: 16 }
+                            font: { size: 16 },
+                            padding: {
+                                top: 10,
+                                bottom: 10 // Increased bottom padding for the title
+                            }
                         },
                         datalabels: {
                             color: '#1f2937', 
