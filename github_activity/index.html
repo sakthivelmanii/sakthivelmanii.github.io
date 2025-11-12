@@ -1,9 +1,1249 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <title>Sakthivel</title>
-    </head>
-    <body>
-        <h1>Sakthivel</h1>
-    </body>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Activity Dashboard</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Chart.js for charting -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <!-- Load Chart.js Datalabels Plugin for showing numbers on the chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <!-- Load Firebase (Required for the execution environment) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase setup variables (MANDATORY BOILERPLATE)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+
+        let app, db, auth;
+        let userId = null;
+
+        if (Object.keys(firebaseConfig).length > 0) {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                } else {
+                    // Sign in anonymously if no token is provided
+                    signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
+                }
+            });
+
+            // Attempt to sign in with custom token if available
+            if (typeof __initial_auth_token !== 'undefined') {
+                signInWithCustomToken(auth, __initial_auth_token)
+                    .catch(e => console.error("Custom token sign-in failed:", e));
+            } else {
+                signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
+            }
+        } else {
+            // Fallback if no Firebase config is present
+            console.warn("Firebase configuration not found. Firestore features are disabled.");
+        }
+    </script>
+    <style>
+        /* Custom styles for a light, professional look */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Very light gray background */
+            color: #1f2937; /* Dark gray text */
+            min-height: 100vh;
+        }
+        .card {
+            background-color: #ffffff; /* White card background */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        /* Style for the modal overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: #ffffff;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        /* Ensure the chart columns have enough height */
+        @media (min-width: 1024px) {
+            .chart-col {
+                min-height: 350px; /* Ensure columns have a minimum height for all charts */
+            }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <header class="mb-8 text-center">
+        <h1 class="text-4xl font-extrabold text-blue-700">GitHub Activity Dashboard</h1>
+        <p class="text-gray-600 mt-2">Visualize your Pull Request contributions and discussion volume for any selected year.</p>
+    </header>
+
+    <div class="max-w-7xl mx-auto space-y-8"> 
+        <!-- Input Form Card -->
+        <div class="card p-6 rounded-xl">
+            <h2 class="text-2xl font-semibold mb-4 border-b border-gray-300 pb-2 text-blue-600">Configuration</h2>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end"> 
+                <div class="col-span-1">
+                    <label for="pat" class="block text-sm font-medium mb-1 text-gray-700 flex justify-between items-center">
+                        GitHub PAT (Read Access)
+                        <svg onclick="showPatInfoModal()" class="w-4 h-4 text-blue-500 cursor-pointer hover:text-blue-700 transition" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                        </svg>
+                    </label>
+                    <input type="password" id="pat" placeholder="ghp_..." class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="col-span-1">
+                    <label for="username" class="block text-sm font-medium mb-1 text-gray-700">GitHub Username</label>
+                    <input type="text" id="username" value="" placeholder="sakthivelmanii" class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="col-span-1">
+                    <label for="yearSelector" class="block text-sm font-medium mb-1 text-gray-700">Year</label>
+                    <select id="yearSelector" class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
+                        <!-- Options will be populated by JS -->
+                    </select>
+                </div>
+                <div class="col-span-1">
+                    <button id="generateBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:bg-gray-400" onclick="generateDashboard()">
+                        Generate Dashboard
+                    </button>
+                </div>
+            </div>
+            <p id="rateLimit" class="text-xs text-gray-500 mt-3 text-right hidden">Rate Limit: <span id="rateRemaining"></span> remaining.</p>
+        </div>
+
+        <!-- Dashboard Output Area -->
+        <div id="dashboardArea" class="hidden">
+            <h2 id="summaryTitle" class="text-2xl font-semibold mb-4 text-blue-600">Activity Summary</h2> 
+            
+            <!-- Four Charts (Grid) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+                
+                <!-- Chart 1: Authored vs Reviewed (Pie Chart) - CLICKABLE -->
+                <div class="card p-6 rounded-xl chart-col">
+                    <div class="relative max-w-full mx-auto h-72 cursor-pointer" onclick="handleChartClickWrapper(event, prChart)"> 
+                        <canvas id="prPieChart"></canvas>
+                    </div>
+                    <p id="totalSummary" class="text-center text-gray-700 mt-4 text-lg font-medium"></p>
+                </div>
+                
+                <!-- Chart 2: Authored PR Languages (Pie Chart) - CLICKABLE -->
+                <div class="card p-6 rounded-xl chart-col">
+                    <div class="relative max-w-full mx-auto h-72 cursor-pointer" onclick="handleChartClickWrapper(event, languageChart)"> 
+                        <canvas id="languagePieChart"></canvas>
+                    </div>
+                    <p id="languageSummary" class="text-center text-gray-700 mt-4 text-lg font-medium"></p>
+                </div>
+                
+                <!-- Chart 3: Reviewed PR Languages (Pie Chart) - CLICKABLE -->
+                <div class="card p-6 rounded-xl chart-col">
+                    <div class="relative max-w-full mx-auto h-72 cursor-pointer" onclick="handleChartClickWrapper(event, reviewedLanguageChart)"> 
+                        <canvas id="reviewedLanguagePieChart"></canvas>
+                    </div>
+                    <p id="reviewedLanguageSummary" class="text-center text-gray-700 mt-4 text-lg font-medium"></p>
+                </div>
+
+                <!-- Chart 4: PR Discussion Volume (Bar Chart) - CLICKABLE (Authored only) -->
+                <div class="card p-6 rounded-xl chart-col lg:col-span-1">
+                    <div class="relative max-w-full mx-auto h-72 cursor-pointer" onclick="handleChartClickWrapper(event, commentChart)"> 
+                        <canvas id="commentBarChart"></canvas>
+                    </div>
+                    <p id="commentSummary" class="text-center text-gray-700 mt-4 text-lg font-medium"></p>
+                </div>
+            </div>
+            
+            <!-- Overall Contribution Totals Table (Full Width) -->
+            <div class="max-w-xl mx-auto">
+                 <div class="card p-6 rounded-xl"> 
+                    <h3 class="text-xl font-semibold mb-4 text-blue-600 border-b pb-2">Overall Contribution Totals</h3>
+                    <div id="overallTotalsTable">
+                        <!-- Content will be rendered here -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Message/Error Box -->
+        <div id="messageBox" class="hidden p-4 rounded-lg text-center text-white" role="alert">
+            <p id="messageText" class="font-medium"></p>
+        </div>
+    </div>
+    
+    <!-- PR List Modal -->
+    <div id="prListModal" class="modal-overlay hidden">
+        <div class="modal-content w-11/12 md:w-3/4 lg:w-1/2 p-6 rounded-xl shadow-2xl">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 id="modalTitle" class="text-2xl font-bold text-gray-800">PR List</h3>
+                <button onclick="closeModal('prListModal')" class="text-gray-500 hover:text-gray-700 text-3xl font-light leading-none">&times;</button>
+            </div>
+            <div id="prListContainer" class="space-y-4">
+                <!-- PR items will be injected here -->
+            </div>
+            <div class="mt-6 text-right">
+                 <button onclick="closeModal('prListModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-150">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAT Info Modal -->
+    <div id="patInfoModal" class="modal-overlay hidden">
+        <div class="modal-content w-11/12 md:w-3/4 lg:w-1/2 p-6 rounded-xl shadow-2xl">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-2xl font-bold text-gray-800">GitHub Personal Access Token Instructions</h3>
+                <button onclick="closeModal('patInfoModal')" class="text-gray-500 hover:text-gray-700 text-3xl font-light leading-none">&times;</button>
+            </div>
+            <div class="text-gray-700 space-y-4">
+                <p>A Personal Access Token (PAT) is required to access your private GitHub activity through the API.</p>
+                <p>Please follow these steps to create a new token:</p>
+                
+                <ol class="list-decimal list-inside space-y-2 ml-4">
+                    <li>Go to the <a href="https://github.com/settings/personal-access-tokens" target="_blank" class="text-blue-600 hover:underline font-medium">GitHub Personal Access Tokens page</a> and click <strong>Generate new token</strong>.</li>
+                    <li>Choose <strong>Fine-grained tokens</strong>.</li>
+                    <li>
+                        <strong>Token Details:</strong>
+                        <ul class="list-disc list-inside ml-6 text-sm">
+                            <li><strong>Token name:</strong> `Dashboard-Access` (or similar)</li>
+                            <li><strong>Expiration:</strong> Set to <strong>1 day</strong> to avoid reuse.</li>
+                            <li><strong>Resource owner:</strong> Your username</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Permissions (Crucial Step):</strong>
+                        <ul class="list-disc list-inside ml-6 text-sm">
+                            <li>Set <strong>Account permissions</strong> to <strong>Read-only</strong> for <strong>Metadata</strong>.</li>
+                            <li>Set <strong>Repository permissions</strong> to <strong>Read-only</strong> for <strong>Contents</strong>.</li>
+                            <li>Set <strong>Repository permissions</strong> to <strong>Read-only</strong> for <strong>Pull requests</strong>.</li>
+                        </ul>
+                    </li>
+                    <li>Click <strong>Generate token</strong> and paste the resulting key into the input field above.</li>
+                </ol>
+                <p class="text-red-600 font-medium"><strong>Security Warning:</strong> This token will only be visible once. Treat it like a password and do not share it.</p>
+            </div>
+            <div class="mt-6 text-right">
+                 <button onclick="closeModal('patInfoModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-150">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Register the datalabels plugin globally
+        Chart.register(ChartDataLabels);
+        
+        // GLOBAL CONSTANT: Maximum number of PRs to fetch per page during pagination
+        const PR_PAGE_SIZE = 100;
+
+        const patInput = document.getElementById('pat');
+        const usernameInput = document.getElementById('username');
+        const yearSelector = document.getElementById('yearSelector');
+        const generateBtn = document.getElementById('generateBtn');
+        const dashboardArea = document.getElementById('dashboardArea');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const totalSummary = document.getElementById('totalSummary');
+        const languageSummary = document.getElementById('languageSummary');
+        const reviewedLanguageSummary = document.getElementById('reviewedLanguageSummary');
+        const summaryTitle = document.getElementById('summaryTitle');
+        const rateLimitDisplay = document.getElementById('rateLimit');
+        const rateRemainingDisplay = document.getElementById('rateRemaining');
+        const prListModal = document.getElementById('prListModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const prListContainer = document.getElementById('prListContainer');
+        
+        // NEW chart summary element
+        const commentSummary = document.getElementById('commentSummary');
+        
+        // NEW table containers
+        const overallTotalsTable = document.getElementById('overallTotalsTable');
+        const patInfoModal = document.getElementById('patInfoModal');
+        
+        let prChart = null;
+        let languageChart = null;
+        let reviewedLanguageChart = null;
+        let commentChart = null; // NEW chart instance
+        let prDataCache = { authored: [], reviewed: [] }; 
+
+        // --- Utility Functions ---
+
+        /**
+         * Shows a message to the user (instead of alert()).
+         * @param {string} text The message text.
+         * @param {string} type 'success', 'error', or 'info'.
+         */
+        function showMessage(text, type = 'info') {
+            messageBox.classList.remove('hidden', 'bg-red-600', 'bg-green-600', 'bg-blue-600');
+            messageText.textContent = text;
+            messageBox.classList.add('text-white');
+
+            let bgColor = 'bg-blue-600';
+            if (type === 'error') bgColor = 'bg-red-600';
+            if (type === 'success') bgColor = 'bg-green-600';
+
+            messageBox.classList.add(bgColor);
+        }
+
+        /**
+         * Clears the message box.
+         */
+        function clearMessage() {
+            messageBox.classList.add('hidden');
+            messageBox.classList.remove('bg-red-600', 'bg-green-600', 'bg-blue-600');
+            messageText.textContent = '';
+        }
+
+        /**
+         * Populates the year selector dropdown.
+         */
+        function populateYearSelector() {
+            const currentYear = new Date().getFullYear();
+            const startYear = 2018; 
+
+            for (let year = currentYear; year >= startYear; year--) {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                if (year === currentYear) {
+                    option.selected = true;
+                }
+                yearSelector.appendChild(option);
+            }
+        }
+
+        /**
+         * Calculates the start and end dates/datetimes for the target year.
+         * @param {number} targetYear The year to generate dates for.
+         * @returns {{dateOnlyStart: string, dateOnlyEnd: string, dateTimeStart: string, dateTimeEnd: string}}
+         */
+        function getCurrentYearDates(targetYear) {
+            const TARGET_YEAR = targetYear; 
+
+            // 1. For GitHub search syntax (YYYY-MM-DD..YYYY-MM-DD)
+            const dateOnlyStart = `${TARGET_YEAR}-01-01`; 
+            const dateOnlyEnd = `${TARGET_YEAR}-12-31`; 
+
+            // 2. For GraphQL DateTime fields (e.g., contributionsCollection)
+            // Uses UTC midnight to ensure the correct range boundaries.
+            const dateTimeStart = new Date(Date.UTC(TARGET_YEAR, 0, 1)).toISOString(); // Jan 1st 00:00:00Z
+            const dateTimeEnd = new Date(Date.UTC(TARGET_YEAR, 11, 31, 23, 59, 59)).toISOString(); // Dec 31st 23:59:59Z
+
+            return {
+                dateOnlyStart: dateOnlyStart,
+                dateOnlyEnd: dateOnlyEnd,
+                dateTimeStart: dateTimeStart,
+                dateTimeEnd: dateTimeEnd
+            };
+        }
+        
+        /**
+         * Converts ISO date string to a readable local format.
+         */
+        function formatReadableDate(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+        
+        /**
+         * Processes the PR edges to count primary languages.
+         */
+        function processLanguageData(prEdges) {
+            const languageCounts = {};
+            prEdges.forEach(pr => {
+                const language = pr.node.repository?.primaryLanguage?.name || 'No Primary Language';
+                languageCounts[language] = (languageCounts[language] || 0) + 1;
+            });
+            return languageCounts;
+        }
+
+        /**
+         * Processes PR edges to group review reply counts into specified buckets (0, 1-5, 6-10, etc.)
+         */
+        function processCommentDistribution(prEdges) {
+            // Define buckets up to 20, plus a bucket for >20
+            const buckets = {
+                '0': 0, 
+                '1-5': 0, 
+                '6-10': 0, 
+                '11-15': 0, 
+                '16-20': 0, 
+                '20+': 0
+            };
+
+            const bucketLabels = Object.keys(buckets);
+            let totalPRsAnalyzed = 0;
+
+            prEdges.forEach(pr => {
+                const node = pr.node;
+                
+                // Use the correct field: reviewThreads count
+                const reviewThreadCount = node.reviewThreads ? node.reviewThreads.totalCount : 0;
+                
+                const replyCount = reviewThreadCount; // Using thread count as a proxy for discussion/reply volume
+                
+                totalPRsAnalyzed++;
+
+                if (replyCount === 0) {
+                    buckets['0']++;
+                } else if (replyCount >= 1 && replyCount <= 5) {
+                    buckets['1-5']++;
+                } else if (replyCount >= 6 && replyCount <= 10) {
+                    buckets['6-10']++;
+                } else if (replyCount >= 11 && replyCount <= 15) {
+                    buckets['11-15']++;
+                } else if (replyCount >= 16 && replyCount <= 20) {
+                    buckets['16-20']++;
+                } else {
+                    buckets['20+']++;
+                }
+            });
+
+            return {
+                labels: bucketLabels,
+                counts: bucketLabels.map(label => buckets[label]),
+                totalPRsAnalyzed: totalPRsAnalyzed
+            };
+        }
+
+
+        // --- GitHub API Interaction ---
+
+        const GITHUB_GRAPHQL_ENDPOINT = 'https://api.github.com/graphql';
+
+        /**
+         * Generic fetcher function for GraphQL.
+         */
+        async function runGraphQLQuery(token, query, variables = {}) {
+            const headers = {
+                'Authorization': `bearer ${token}`,
+                'Content-Type': 'application/json'
+            };
+
+            const payload = { 
+                query,
+                variables 
+            };
+            
+            // Exponential backoff for retries (max 3 times)
+            for (let i = 0; i < 3; i++) {
+                try {
+                    const response = await fetch(GITHUB_GRAPHQL_ENDPOINT, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 401) {
+                        throw new Error("GitHub API HTTP error: 401 Unauthorized. Please check your PAT validity and read:user scope.");
+                    }
+                    if (!response.ok) {
+                        throw new Error(`GitHub API HTTP error: ${response.status} ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+
+                    if (data.errors) {
+                        const errorMessages = data.errors.map(err => err.message).join('; ');
+                        throw new Error(`GitHub API GraphQL Error: ${errorMessages}`);
+                    }
+
+                    return data.data; // Success, break loop and return
+                } catch (error) {
+                    if (i < 2) {
+                        const delay = Math.pow(2, i) * 1000;
+                        console.warn(`Attempt ${i + 1} failed. Retrying in ${delay}ms...`, error.message);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        throw error; // Last attempt failed
+                    }
+                }
+            }
+        }
+
+        /**
+         * Fetches all PRs using pagination for a given search query.
+         */
+        async function fetchAllPRs(token, searchQuery, cursor = null) {
+            // FIX: Removed unnecessary comment/slash that could cause UNKNOWN_CHAR error
+            const query = `
+                query FetchPRs($cursor: String) {
+                    search(query: "${searchQuery}", type: ISSUE, first: ${PR_PAGE_SIZE}, after: $cursor) {
+                        issueCount
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                        }
+                        edges {
+                            node {
+                                ... on PullRequest {
+                                    title
+                                    createdAt
+                                    url
+                                    repository {
+                                        nameWithOwner
+                                        primaryLanguage {
+                                            name
+                                        }
+                                    }
+                                    reviewThreads { totalCount } 
+                                }
+                            }
+                        }
+                    }
+                    rateLimit {
+                        remaining
+                    }
+                }
+            `;
+            
+            let allEdges = [];
+            let currentCursor = cursor;
+            let totalCount = 0;
+            let hasNextPage = true;
+
+            while (hasNextPage) {
+                const variables = { cursor: currentCursor };
+                
+                try {
+                    const data = await runGraphQLQuery(token, query, variables);
+                    
+                    const searchResults = data.search;
+                    
+                    allEdges = allEdges.concat(searchResults.edges);
+                    totalCount = searchResults.issueCount; 
+                    currentCursor = searchResults.pageInfo.endCursor;
+                    hasNextPage = searchResults.pageInfo.hasNextPage;
+
+                } catch (error) {
+                    console.error("Pagination stopped due to error:", error);
+                    hasNextPage = false;
+                }
+            }
+
+            return {
+                edges: allEdges,
+                totalCount: totalCount
+            };
+        }
+
+
+        /**
+         * Fetches PR and Commit data from GitHub using GraphQL.
+         */
+        async function fetchGitHubData(token, username, year) {
+            const { dateOnlyStart, dateOnlyEnd, dateTimeStart, dateTimeEnd } = getCurrentYearDates(year);
+            const dateRangeSearch = `created:${dateOnlyStart}..${dateOnlyEnd}`;
+
+            // --- 1. Fetch Totals and Rate Limit (Non-Paginated) ---
+            // Removed PR review and commit count from this query as they are retrieved via search or are non-comparable
+            const totalsQuery = `
+                query {
+                    user(login: "${username}") {
+                        contributionsCollection(from: "${dateTimeStart}", to: "${dateTimeEnd}") {
+                            totalCommitContributions
+                        }
+                    }
+                    rateLimit {
+                        cost
+                        limit
+                        remaining
+                        resetAt
+                    }
+                }
+            `;
+            const nonPaginatedData = await runGraphQLQuery(token, totalsQuery);
+            const contributions = nonPaginatedData.user.contributionsCollection;
+            const rateLimit = nonPaginatedData.rateLimit;
+
+
+            // --- 2. Fetch ALL Authored PRs (Merged only, Paginated) ---
+            const authoredQuery = `is:pr is:merged author:${username} ${dateRangeSearch}`;
+            const authoredPRData = await fetchAllPRs(token, authoredQuery);
+
+            // --- 3. Fetch ALL Reviewed PRs (Paginated) ---
+            const reviewedQuery = `is:pr reviewed-by:${username} -author:${username} ${dateRangeSearch}`;
+            const reviewedPRData = await fetchAllPRs(token, reviewedQuery);
+            
+            // --- 4. Assemble Final Result ---
+            return {
+                contributions: contributions,
+                authored: authoredPRData,
+                reviewed: reviewedPRData,
+                rateLimit: rateLimit
+            };
+        }
+
+        // --- Modal Interaction ---
+
+        /**
+         * Shows the modal populated with the list of PRs.
+         */
+        function showPrListModal(title, prs, totalCount) {
+            modalTitle.textContent = `${title} (${prs.length} displayed)`;
+            prListContainer.innerHTML = ''; 
+            
+            if (prs.length === 0) {
+                prListContainer.innerHTML = '<p class="text-center text-gray-500 py-4">No Pull Requests found for this category.</p>';
+            } else {
+                prs.forEach(pr => {
+                    const node = pr.node;
+                    const language = node.repository?.primaryLanguage?.name || 'Unknown';
+                    const repoName = node.repository?.nameWithOwner || 'Unknown Repository';
+                    const date = formatReadableDate(node.createdAt);
+                    
+                    const reviewThreadCount = node.reviewThreads ? node.reviewThreads.totalCount : 0;
+                    
+                    const itemHtml = `
+                        <a href="${node.url}" target="_blank" class="block p-4 border border-gray-200 rounded-lg hover:bg-blue-50 transition duration-150">
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                                <span class="font-semibold text-gray-800 break-words max-w-full sm:max-w-xs md:max-w-md">${node.title}</span>
+                                <span class="text-xs text-gray-500 mt-1 sm:mt-0 whitespace-nowrap">${date}</span>
+                            </div>
+                            <div class="flex items-center text-sm mt-1 space-x-3">
+                                <span class="text-blue-600 font-medium">${repoName}</span>
+                                <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">${language}</span>
+                                ${reviewThreadCount > 0 ? `<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-xs">${reviewThreadCount} replies</span>` : ''}
+                            </div>
+                        </a>
+                    `;
+                    prListContainer.insertAdjacentHTML('beforeend', itemHtml);
+                });
+            }
+
+            prListModal.classList.remove('hidden');
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+        window.closeModal = closeModal;
+        
+        function showPatInfoModal() {
+            patInfoModal.classList.remove('hidden');
+        }
+        window.showPatInfoModal = showPatInfoModal;
+        
+        // --- Event Handlers for Charts ---
+        
+        /**
+         * Universal wrapper for Chart.js click events that pulls elements from the event object.
+         * @param {Event} event The native click event.
+         * @param {Chart} chartInstance The Chart.js instance.
+         */
+        function handleChartClickWrapper(event, chartInstance) {
+            if (!chartInstance) return; 
+
+            // Get the elements clicked
+            const elements = chartInstance.getElementsAtEventForMode(
+                event,
+                'nearest',
+                'intersect',
+                true
+            );
+
+            // Determine which specific handler to call based on the chart ID
+            const chartId = chartInstance.canvas.id;
+
+            if (elements.length > 0) {
+                switch (chartId) {
+                    case 'prPieChart':
+                        handleMainPRChartClick(event, elements, chartInstance);
+                        break;
+                    case 'languagePieChart':
+                        handleAuthoredLanguageChartClick(event, elements, chartInstance);
+                        break;
+                    case 'reviewedLanguagePieChart':
+                        handleReviewedLanguageChartClick(event, elements, chartInstance);
+                        break;
+                    case 'commentBarChart':
+                        handleCommentDistributionChartClick(event, elements, chartInstance);
+                        break;
+                }
+            }
+        }
+        window.handleChartClickWrapper = handleChartClickWrapper;
+
+
+        /**
+         * Handles clicks on the primary pie chart segments.
+         */
+        function handleMainPRChartClick(event, elements, chart) {
+            const clickedIndex = elements[0].index;
+            const label = chart.data.labels[clickedIndex];
+            
+            let prs = [];
+            let totalCount = 0;
+
+            if (label === 'Authored PRs') {
+                prs = prDataCache.authored;
+                totalCount = chart.data.datasets[0].data[clickedIndex];
+            } else if (label === 'Reviewed PRs') {
+                prs = prDataCache.reviewed;
+                totalCount = chart.data.datasets[0].data[clickedIndex];
+            }
+
+            showPrListModal(label, prs, totalCount);
+        }
+
+        /**
+         * Handles clicks on the Authored Language pie chart segments.
+         */
+        function handleAuthoredLanguageChartClick(event, elements, chart) {
+            const clickedIndex = elements[0].index;
+            const language = chart.data.labels[clickedIndex];
+            
+            // Filter the entire authored PR list by the clicked language
+            const filteredPrs = prDataCache.authored.filter(pr => {
+                const prLanguage = pr.node.repository?.primaryLanguage?.name || 'No Primary Language';
+                return prLanguage === language;
+            });
+
+            showPrListModal(`Authored PRs in ${language}`, filteredPrs, filteredPrs.length);
+        }
+
+        /**
+         * Handles clicks on the Reviewed Language pie chart segments.
+         */
+        function handleReviewedLanguageChartClick(event, elements, chart) {
+            const clickedIndex = elements[0].index;
+            const language = chart.data.labels[clickedIndex];
+            
+            // Filter the entire reviewed PR list by the clicked language
+            const filteredPrs = prDataCache.reviewed.filter(pr => {
+                const prLanguage = pr.node.repository?.primaryLanguage?.name || 'No Primary Language';
+                return prLanguage === language;
+            });
+
+            showPrListModal(`Reviewed PRs in ${language}`, filteredPrs, filteredPrs.length);
+        }
+        
+        /**
+         * Handles clicks on the Comment Distribution bar chart segments.
+         */
+        function handleCommentDistributionChartClick(event, elements, chart) {
+            const clickedIndex = elements[0].index;
+            const bucketLabel = chart.data.labels[clickedIndex];
+            
+            // Filter the entire authored PR list based on the review thread count bucket
+            const filteredPrs = prDataCache.authored.filter(pr => {
+                const node = pr.node;
+                const replyCount = node.reviewThreads ? node.reviewThreads.totalCount : 0;
+
+                if (bucketLabel === '0') {
+                    return replyCount === 0;
+                } else if (bucketLabel === '20+') {
+                    return replyCount > 20;
+                } else {
+                    // Handle ranges like '1-5', '6-10', etc.
+                    const [minStr, maxStr] = bucketLabel.split('-');
+                    const min = parseInt(minStr);
+                    const max = parseInt(maxStr);
+                    return replyCount >= min && replyCount <= max;
+                }
+            });
+
+            showPrListModal(`Authored PRs with ${bucketLabel} review replies`, filteredPrs, filteredPrs.length);
+        }
+
+
+        // --- Charting and UI Rendering ---
+
+        /**
+         * Renders or updates the Pie Chart for Authored vs. Reviewed PRs.
+         */
+        function renderChart(authoredCount, reviewedCount, year) {
+            const canvas = document.getElementById('prPieChart');
+            const ctx = canvas ? canvas.getContext('2d') : null;
+
+            if (!ctx) {
+                console.error("Failed to get 2D rendering context for Chart 1.");
+                showMessage("Dashboard generated data, but failed to draw Chart 1.", 'error');
+                return;
+            }
+
+            const total = authoredCount + reviewedCount;
+            
+            summaryTitle.textContent = `${year} Activity Summary`;
+            totalSummary.textContent = total > 0 
+                ? `Total PR Activity: ${total}`
+                : `No PR activity found.`;
+
+            if (prChart) {
+                prChart.destroy(); 
+            }
+
+            const data = {
+                labels: ['Authored PRs', 'Reviewed PRs'],
+                datasets: [{
+                    label: 'PR Activity',
+                    data: [authoredCount, reviewedCount],
+                    backgroundColor: [
+                        '#EAB308', // Amber (Authored)
+                        '#14B8A6'  // Teal (Reviewed)
+                    ],
+                    hoverOffset: 8
+                }]
+            };
+
+            const config = {
+                type: 'pie',
+                data: data,
+                plugins: [ChartDataLabels],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, 
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { color: '#1f2937' }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    if (label) {
+                                        let value = context.parsed;
+                                        let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                        return `${label}: ${value} (${percentage}%)`;
+                                    }
+                                    return '';
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `Authored vs. Reviewed PRs (${year})`, 
+                            color: '#1D4ED8',
+                            font: { size: 16 }
+                        },
+                        // Display labels INSIDE the segments
+                        datalabels: {
+                            color: '#fff', 
+                            formatter: (value, context) => {
+                                const total = context.dataset.data.reduce((sum, count) => sum + count, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${value} (${percentage}%)`; 
+                            },
+                            font: { weight: 'bold', size: 14 },
+                            anchor: 'center', 
+                            align: 'center',  
+                            offset: 0, 
+                        }
+                    }
+                }
+            };
+
+            prChart = new Chart(ctx, config);
+        }
+
+        /**
+         * Renders or updates the Language Pie Chart for Authored PRs.
+         */
+        function renderAuthoredLanguageChart(languageCounts, year) {
+            const canvas = document.getElementById('languagePieChart');
+            const ctx = canvas ? canvas.getContext('2d') : null;
+
+            if (!ctx) {
+                console.error("Failed to get 2D rendering context for Chart 2.");
+                return;
+            }
+            
+            const sortedLanguages = Object.entries(languageCounts)
+                .sort(([, a], [, b]) => b - a);
+
+            const labels = sortedLanguages.map(([name]) => name);
+            const dataValues = sortedLanguages.map(([, count]) => count);
+            const total = dataValues.reduce((sum, count) => sum + count, 0);
+
+            languageSummary.textContent = total > 0 
+                ? `Authored PRs Language Breakdown (${total} PRs)` 
+                : `No authored PRs with primary language found.`; 
+
+            if (languageChart) {
+                languageChart.destroy();
+            }
+
+            const chartColors = [
+                '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#6366F1', '#EC4899', '#A855F7', '#6B7280',
+            ];
+            const backgroundColors = labels.map((_, index) => chartColors[index % chartColors.length]);
+
+            const data = {
+                labels: labels,
+                datasets: [{
+                    label: 'Authored PR Language Count',
+                    data: dataValues,
+                    backgroundColor: backgroundColors,
+                    hoverOffset: 8
+                }]
+            };
+
+            const config = {
+                type: 'pie',
+                data: data,
+                plugins: [ChartDataLabels],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { color: '#1f2937' }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    if (label) {
+                                        let value = context.parsed;
+                                        let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                        return `${label}: ${value} (${percentage}%)`;
+                                    }
+                                    return '';
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `Authored PR Language Breakdown (${year})`,
+                            color: '#1D4ED8',
+                            font: { size: 16 }
+                        },
+                        // Display labels OUTSIDE with line
+                        datalabels: {
+                            color: '#1f2937', 
+                            formatter: (value, context) => {
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${value} (${percentage}%)`; 
+                            },
+                            font: { weight: 'bold', size: 12 },
+                            anchor: 'end',
+                            align: 'end',
+                            offset: 4, 
+                            display: (context) => {
+                                // Only show if the slice is large enough, or force show for critical data
+                                return dataValues[context.dataIndex] > 0;
+                            }
+                        }
+                    }
+                }
+            };
+
+            languageChart = new Chart(ctx, config);
+        }
+
+        /**
+         * Renders or updates the Language Pie Chart for Reviewed PRs.
+         */
+        function renderReviewedLanguageChart(languageCounts, year) {
+            const canvas = document.getElementById('reviewedLanguagePieChart');
+            const ctx = canvas ? canvas.getContext('2d') : null;
+
+            if (!ctx) {
+                console.error("Failed to get 2D rendering context for Chart 3.");
+                return;
+            }
+            
+            const sortedLanguages = Object.entries(languageCounts)
+                .sort(([, a], [, b]) => b - a);
+
+            const labels = sortedLanguages.map(([name]) => name);
+            const dataValues = sortedLanguages.map(([, count]) => count);
+            const total = dataValues.reduce((sum, count) => sum + count, 0);
+
+            reviewedLanguageSummary.textContent = total > 0 
+                ? `Reviewed PRs Language Breakdown (${total} PRs analyzed)` 
+                : `No reviewed PRs with primary language found.`; 
+
+            if (reviewedLanguageChart) {
+                reviewedLanguageChart.destroy();
+            }
+
+            // Using a distinct color palette
+            const chartColors = [
+                '#059669', '#3730A3', '#D97706', '#8B5CF6', '#F43F5E', '#1D4ED8', '#6EE7B7', '#9CA3AF',
+            ];
+            const backgroundColors = labels.map((_, index) => chartColors[index % chartColors.length]);
+
+            const data = {
+                labels: labels,
+                datasets: [{
+                    label: 'Reviewed PR Language Count',
+                    data: dataValues,
+                    backgroundColor: backgroundColors,
+                    hoverOffset: 8
+                }]
+            };
+
+            const config = {
+                type: 'pie',
+                data: data,
+                plugins: [ChartDataLabels],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { color: '#1f2937' }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    if (label) {
+                                        let value = context.parsed;
+                                        let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                        return `${label}: ${value} (${percentage}%)`;
+                                    }
+                                    return '';
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `Reviewed PR Language Breakdown (${year})`,
+                            color: '#1D4ED8',
+                            font: { size: 16 }
+                        },
+                        // Display labels OUTSIDE with line
+                        datalabels: {
+                            color: '#1f2937', 
+                            formatter: (value, context) => {
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${value} (${percentage}%)`; 
+                            },
+                            font: { weight: 'bold', size: 12 },
+                            anchor: 'end',
+                            align: 'end',
+                            offset: 4, 
+                            display: (context) => {
+                                // Only show if the slice is large enough, or force show for critical data
+                                return dataValues[context.dataIndex] > 0;
+                            }
+                        }
+                    }
+                }
+            };
+
+            reviewedLanguageChart = new Chart(ctx, config);
+        }
+
+        /**
+         * Renders or updates the Bar Chart for Authored PR Discussion Volume.
+         */
+        function renderCommentDistributionChart(dataObject, year) {
+            const canvas = document.getElementById('commentBarChart');
+            const ctx = canvas ? canvas.getContext('2d') : null;
+
+            if (!ctx) {
+                console.error("Failed to get 2D rendering context for Chart 4.");
+                return;
+            }
+
+            commentSummary.textContent = dataObject.totalPRsAnalyzed > 0 
+                ? `Total Authored PRs analyzed: ${dataObject.totalPRsAnalyzed}` 
+                : `No Authored PRs found for analysis.`;
+
+            if (commentChart) {
+                commentChart.destroy();
+            }
+
+            const data = {
+                labels: dataObject.labels,
+                datasets: [{
+                    label: 'Number of PRs',
+                    data: dataObject.counts,
+                    backgroundColor: '#0EA5E9', // Sky Blue
+                    borderColor: '#0284C7',
+                    borderWidth: 1
+                }]
+            };
+
+            const config = {
+                type: 'bar',
+                data: data,
+                plugins: [ChartDataLabels],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y', // Horizontal bars
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of PRs',
+                                color: '#1f2937'
+                            },
+                            ticks: {
+                                color: '#1f2937'
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                color: '#1f2937'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                             callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.formattedValue}`;
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `Authored PR Review Reply Distribution (${year})`,
+                            color: '#1D4ED8',
+                            font: { size: 16 }
+                        },
+                        datalabels: {
+                            color: '#1f2937', 
+                            anchor: 'end',
+                            align: 'end',
+                            offset: 4,
+                            formatter: (value) => value > 0 ? value : '',
+                            font: { weight: 'bold', size: 12 }
+                        }
+                    }
+                }
+            };
+
+            commentChart = new Chart(ctx, config);
+        }
+
+        /**
+         * Renders the Overall Contribution Totals table.
+         */
+        function renderOverallTotals(data, authoredCount, reviewedCount) {
+            const table = `
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metric</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200 text-gray-800">
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap font-medium text-blue-600">Total Authored PRs</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${authoredCount}</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap font-medium text-teal-600">Total Reviewed PRs</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${reviewedCount}</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap font-medium">Total Commits</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${data.contributions.totalCommitContributions}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+            overallTotalsTable.innerHTML = table;
+        }
+
+        // --- Main Controller ---
+
+        async function generateDashboard() {
+            clearMessage();
+            dashboardArea.classList.add('hidden');
+            
+            const token = patInput.value.trim();
+            const username = usernameInput.value.trim();
+            const year = parseInt(yearSelector.value);
+            
+            if (!token || !username) {
+                showMessage("Please enter both a valid GitHub PAT and Username.", 'error');
+                return;
+            }
+
+            generateBtn.disabled = true;
+            generateBtn.textContent = `Generating Dashboard for ${year}...`;
+
+            try {
+                // 1. Fetch Data
+                const data = await fetchGitHubData(token, username, year);
+
+                // 2. Update Rate Limit Display
+                if (data.rateLimit) {
+                    rateLimitDisplay.classList.remove('hidden');
+                    rateRemainingDisplay.textContent = `${data.rateLimit.remaining} / ${data.rateLimit.limit}`;
+                }
+
+                // 3. Cache PR Data
+                prDataCache.authored = data.authored.edges;
+                prDataCache.reviewed = data.reviewed.edges;
+                const authoredCount = data.authored.totalCount;
+                const reviewedCount = data.reviewed.totalCount;
+
+                // 4. Process Data for Charts
+                const authoredLanguageCounts = processLanguageData(prDataCache.authored);
+                const reviewedLanguageCounts = processLanguageData(prDataCache.reviewed);
+                const commentDistributionData = processCommentDistribution(prDataCache.authored); // Authored PRs only
+                
+                // 5. Render All UI Components (using a slight delay to ensure canvas rendering)
+                renderOverallTotals(data, authoredCount, reviewedCount);
+                renderChart(authoredCount, reviewedCount, year);
+                renderAuthoredLanguageChart(authoredLanguageCounts, year);
+                renderReviewedLanguageChart(reviewedLanguageCounts, year);
+                renderCommentDistributionChart(commentDistributionData, year);
+
+                dashboardArea.classList.remove('hidden');
+                showMessage("Dashboard successfully generated!", 'success');
+
+            } catch (error) {
+                console.error(error);
+                let message = `Dashboard generation failed: ${error.message}`;
+                if (error.message.includes('401 Unauthorized')) {
+                    message = "Authentication Failed: Check your GitHub PAT validity and permissions (read:user scope needed).";
+                } else if (error.message.includes('rate limit')) {
+                     message = "GitHub Rate Limit Exceeded. Please try again after the reset time.";
+                }
+                showMessage(message, 'error');
+                
+                // Reset cache on failure
+                prDataCache = { authored: [], reviewed: [] };
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate Dashboard';
+            }
+        }
+
+        // --- Initial Setup ---
+        window.onload = function () {
+            populateYearSelector();
+            
+            // Add Esc key listener to close modals
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    if (!prListModal.classList.contains('hidden')) {
+                        closeModal('prListModal');
+                    } else if (!patInfoModal.classList.contains('hidden')) {
+                        closeModal('patInfoModal');
+                    }
+                }
+            });
+        }
+    </script>
+</body>
 </html>
