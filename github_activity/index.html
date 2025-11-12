@@ -110,7 +110,7 @@
                 </div>
                 <div class="col-span-1">
                     <label for="username" class="block text-sm font-medium mb-1 text-gray-700">GitHub Username</label>
-                    <input type="text" id="username" value="" placeholder="sakthivelmanii" class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
+                    <input type="text" id="username" value="" placeholder="octocat" class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div class="col-span-1">
                     <label for="yearSelector" class="block text-sm font-medium mb-1 text-gray-700">Year</label>
@@ -131,12 +131,13 @@
         <div id="dashboardArea" class="hidden">
             <h2 id="summaryTitle" class="text-2xl font-semibold mb-4 text-blue-600">Activity Summary</h2> 
             
-            <!-- Four Charts (Grid) -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+            <!-- Four Charts (Grid) - Now arranged in 2 columns -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8 mb-8">
                 
                 <!-- Chart 1: Authored vs Reviewed (Pie Chart) - CLICKABLE -->
                 <div class="card p-6 rounded-xl chart-col">
-                    <div class="relative max-w-full mx-auto h-72 cursor-pointer" onclick="handleChartClickWrapper(event, prChart)"> 
+                    <!-- Added mb-6 for spacing below the legend/title -->
+                    <div class="relative max-w-full mx-auto h-72 cursor-pointer mb-6" onclick="handleChartClickWrapper(event, prChart)"> 
                         <canvas id="prPieChart"></canvas>
                     </div>
                     <p id="totalSummary" class="text-center text-gray-700 mt-4 text-lg font-medium"></p>
@@ -144,7 +145,7 @@
                 
                 <!-- Chart 2: Authored PR Languages (Pie Chart) - CLICKABLE -->
                 <div class="card p-6 rounded-xl chart-col">
-                    <div class="relative max-w-full mx-auto h-72 cursor-pointer" onclick="handleChartClickWrapper(event, languageChart)"> 
+                    <div class="relative max-w-full mx-auto h-72 cursor-pointer mb-6" onclick="handleChartClickWrapper(event, languageChart)"> 
                         <canvas id="languagePieChart"></canvas>
                     </div>
                     <p id="languageSummary" class="text-center text-gray-700 mt-4 text-lg font-medium"></p>
@@ -152,15 +153,15 @@
                 
                 <!-- Chart 3: Reviewed PR Languages (Pie Chart) - CLICKABLE -->
                 <div class="card p-6 rounded-xl chart-col">
-                    <div class="relative max-w-full mx-auto h-72 cursor-pointer" onclick="handleChartClickWrapper(event, reviewedLanguageChart)"> 
+                    <div class="relative max-w-full mx-auto h-72 cursor-pointer mb-6" onclick="handleChartClickWrapper(event, reviewedLanguageChart)"> 
                         <canvas id="reviewedLanguagePieChart"></canvas>
                     </div>
                     <p id="reviewedLanguageSummary" class="text-center text-gray-700 mt-4 text-lg font-medium"></p>
                 </div>
 
                 <!-- Chart 4: PR Discussion Volume (Bar Chart) - CLICKABLE (Authored only) -->
-                <div class="card p-6 rounded-xl chart-col lg:col-span-1">
-                    <div class="relative max-w-full mx-auto h-72 cursor-pointer" onclick="handleChartClickWrapper(event, commentChart)"> 
+                <div class="card p-6 rounded-xl chart-col">
+                    <div class="relative max-w-full mx-auto h-72 cursor-pointer mb-6" onclick="handleChartClickWrapper(event, commentChart)"> 
                         <canvas id="commentBarChart"></canvas>
                     </div>
                     <p id="commentSummary" class="text-center text-gray-700 mt-4 text-lg font-medium"></p>
@@ -169,7 +170,7 @@
             
             <!-- Overall Contribution Totals Table (Full Width) -->
             <div class="max-w-xl mx-auto">
-                 <div class="card p-6 rounded-xl"> 
+                <div class="card p-6 rounded-xl"> 
                     <h3 class="text-xl font-semibold mb-4 text-blue-600 border-b pb-2">Overall Contribution Totals</h3>
                     <div id="overallTotalsTable">
                         <!-- Content will be rendered here -->
@@ -196,7 +197,7 @@
                 <!-- PR items will be injected here -->
             </div>
             <div class="mt-6 text-right">
-                 <button onclick="closeModal('prListModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-150">Close</button>
+                <button onclick="closeModal('prListModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-150">Close</button>
             </div>
         </div>
     </div>
@@ -236,7 +237,7 @@
                 <p class="text-red-600 font-medium"><strong>Security Warning:</strong> This token will only be visible once. Treat it like a password and do not share it.</p>
             </div>
             <div class="mt-6 text-right">
-                 <button onclick="closeModal('patInfoModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-150">Close</button>
+                <button onclick="closeModal('patInfoModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-150">Close</button>
             </div>
         </div>
     </div>
@@ -477,7 +478,6 @@
          * Fetches all PRs using pagination for a given search query.
          */
         async function fetchAllPRs(token, searchQuery, cursor = null) {
-            // FIX: Removed unnecessary comment/slash that could cause UNKNOWN_CHAR error
             const query = `
                 query FetchPRs($cursor: String) {
                     search(query: "${searchQuery}", type: ISSUE, first: ${PR_PAGE_SIZE}, after: $cursor) {
@@ -1217,7 +1217,7 @@
                 if (error.message.includes('401 Unauthorized')) {
                     message = "Authentication Failed: Check your GitHub PAT validity and permissions (read:user scope needed).";
                 } else if (error.message.includes('rate limit')) {
-                     message = "GitHub Rate Limit Exceeded. Please try again after the reset time.";
+                    message = "GitHub Rate Limit Exceeded. Please try again after the reset time.";
                 }
                 showMessage(message, 'error');
                 
