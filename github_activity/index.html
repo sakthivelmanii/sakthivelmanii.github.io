@@ -12,45 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <!-- Load html2canvas for capturing charts as images -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <!-- Load Firebase (Required for the execution environment) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Global Firebase setup variables (MANDATORY BOILERPLATE)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-
-        let app, db, auth;
-        let userId = null;
-
-        if (Object.keys(firebaseConfig).length > 0) {
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    userId = user.uid;
-                } else {
-                    // Sign in anonymously if no token is provided
-                    signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
-                }
-            });
-
-            // Attempt to sign in with custom token if available
-            if (typeof __initial_auth_token !== 'undefined') {
-                signInWithCustomToken(auth, __initial_auth_token)
-                    .catch(e => console.error("Custom token sign-in failed:", e));
-            } else {
-                signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
-            }
-        } else {
-            // Fallback if no Firebase config is present
-            console.warn("Firebase configuration not found. Firestore features are disabled.");
-        }
-    </script>
+    
     <style>
         /* Custom styles for a light, professional look */
         body {
@@ -1588,11 +1550,10 @@
                 dashboardArea.classList.remove('hidden');
                 downloadBtn.classList.remove('hidden'); // Show download button
                 showMessage("Dashboard successfully generated! Ready to download.", 'success');
-                
+
                 const url = new URL(window.location.href);
                 url.searchParams.set('username', username);
                 window.history.replaceState({}, '', url.toString());
-
             } catch (error) {
                 console.error(error);
                 let message = `Dashboard generation failed: ${error.message}`;
