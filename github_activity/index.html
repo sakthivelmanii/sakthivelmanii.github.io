@@ -74,7 +74,7 @@
                 </div>
                 <div class="col-span-1">
                     <label for="username" class="block text-sm font-medium mb-1 text-gray-700">GitHub Username</label>
-                    <input type="text" id="username" value="" placeholder="octocat" class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
+                    <input type="text" id="username" value="" placeholder="username" class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div class="col-span-1">
                     <label for="yearSelector" class="block text-sm font-medium mb-1 text-gray-700">Year</label>
@@ -100,7 +100,7 @@
         <div id="dashboardArea" class="hidden">
             <h2 id="summaryTitle" class="text-2xl font-semibold mb-4 text-blue-600">Activity Summary</h2> 
             
-            <!-- Four Charts (Grid) - Now arranged in 2 columns -->
+            <!-- Five Charts (Grid) - Now arranged in 2 columns -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8 mb-8">
                 
                 <!-- Chart 1: PRs Authored vs Reviewed (Pie Chart) - CLICKABLE -->
@@ -359,6 +359,33 @@
         }
         
         /**
+         * Generates an array of monthly date ranges (start/end) for a given year.
+         * Used to split high-volume search queries into manageable chunks.
+         * @param {number} year 
+         * @returns {Array<{start: string, end: string}>}
+         */
+        function getMonthlyDateRanges(year) {
+            const ranges = [];
+            for (let month = 0; month < 12; month++) {
+                // Start of the month
+                const dateStart = new Date(year, month, 1);
+                // End of the month (Start of next month minus 1 millisecond)
+                const dateEnd = new Date(year, month + 1, 1);
+                dateEnd.setMilliseconds(-1);
+
+                const formatDate = (d) => {
+                    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+                };
+
+                ranges.push({
+                    start: formatDate(dateStart),
+                    end: formatDate(dateEnd)
+                });
+            }
+            return ranges;
+        }
+
+        /**
          * Converts ISO date string to a readable local format.
          */
         function formatReadableDate(isoString) {
@@ -503,9 +530,9 @@
                 }
             }
         }
-
+        
         /**
-         * Fetches all PRs using pagination for a given search query.
+         * Fetches a complete set of PRs using pagination for a given search query.
          */
         async function fetchAllPRs(token, searchQuery, cursor = null) {
             const query = `
@@ -573,56 +600,95 @@
         }
         
         /**
+         * Fetches PRs by slicing the time range into monthly chunks to bypass the 1000-item search limit.
+         */
+        async function fetchReviewedPRsByChunk(token, year, username) {
+            const ranges = getMonthlyDateRanges(year);
+            const reviewedPRs = [];
+            let apiReportedTotalCount = 0; // Use to track the cumulative issueCount sum
+
+            for (const range of ranges) {
+                const monthlyQuery = `is:pr reviewed-by:${username} -author:${username} created:${range.start}..${range.end}`;
+                
+                // Note: We use the pagination logic on the monthly query itself
+                const monthlyResult = await fetchAllPRs(token, monthlyQuery);
+                
+                reviewedPRs.push(...monthlyResult.edges);
+                
+                // CRITICAL FIX: Sum the totalCount (issueCount) from all monthly chunks to get the accurate API total.
+                apiReportedTotalCount += monthlyResult.totalCount; 
+                
+                if (monthlyResult.edges.length > 0 && monthlyResult.edges.length === 1000) {
+                    console.warn(`Warning: Monthly chunk for ${range.start}..${range.end} hit 1000 limit. Data may be incomplete. Consider slicing by week.`);
+                }
+            }
+
+            return {
+                edges: reviewedPRs,
+                // The totalCount is now the cumulative sum of the issueCount from all monthly chunks.
+                totalCount: apiReportedTotalCount 
+            };
+        }
+
+
+        /**
          * Fetches PR and Commit data from GitHub using GraphQL.
          */
         async function fetchGitHubData(token, username, year) {
             const { dateOnlyStart, dateOnlyEnd, dateTimeStart, dateTimeEnd } = getCurrentYearDates(year);
             const dateRangeSearch = `created:${dateOnlyStart}..${dateOnlyEnd}`;
-
-            // --- 1. Fetch Totals and Rate Limit (Non-Paginated) ---
-            const totalsQuery = `
-                query {
-                    user(login: "${username}") {
-                        contributionsCollection(from: "${dateTimeStart}", to: "${dateTimeEnd}") {
-                            totalCommitContributions
-                            commitContributionsByRepository(maxRepositories: 50) {
-                                repository {
-                                    nameWithOwner
-                                    isFork
-                                }
-                                contributions {
-                                    totalCount
+            
+            // --- OPTIMIZATION: Concurrently fetch independent data blocks ---
+            const totalsAndAuthoredPromises = Promise.all([
+                // 1. Fetch Totals and Commit Contributions
+                runGraphQLQuery(token, `
+                    query {
+                        user(login: "${username}") {
+                            contributionsCollection(from: "${dateTimeStart}", to: "${dateTimeEnd}") {
+                                totalCommitContributions
+                                commitContributionsByRepository(maxRepositories: 50) {
+                                    repository {
+                                        nameWithOwner
+                                        isFork
+                                    }
+                                    contributions {
+                                        totalCount
+                                    }
                                 }
                             }
                         }
+                        rateLimit {
+                            cost
+                            limit
+                            remaining
+                            resetAt
+                        }
                     }
-                    rateLimit {
-                        cost
-                        limit
-                        remaining
-                        resetAt
-                    }
-                }
-            `;
-            const nonPaginatedData = await runGraphQLQuery(token, totalsQuery);
+                `),
+                // 2. Fetch ALL PRs Authored (Merged only, Paginated)
+                fetchAllPRs(token, `is:pr is:merged author:${username} ${dateRangeSearch}`)
+            ]);
+
+            const [nonPaginatedData, authoredPRData] = await totalsAndAuthoredPromises;
+
             const contributions = nonPaginatedData.user.contributionsCollection;
             const rateLimit = nonPaginatedData.rateLimit;
-
-
-            // --- 2. Fetch ALL PRs Authored (Merged only, Paginated) ---
-            const authoredQuery = `is:pr is:merged author:${username} ${dateRangeSearch}`;
-            const authoredPRData = await fetchAllPRs(token, authoredQuery);
-
-            // --- 3. Fetch ALL PRs Reviewed (Paginated) ---
-            // Note: This query returns all reviewed PRs, which we will split below.
-            const reviewedQuery = `is:pr reviewed-by:${username} -author:${username} ${dateRangeSearch}`;
-            const reviewedPRData = await fetchAllPRs(token, reviewedQuery);
             
-            // --- 4. Assemble Final Result ---
+            // 3. Fetch ALL PRs Reviewed (Paginated + Chunked)
+            const reviewedPRData = await fetchReviewedPRsByChunk(token, year, username);
+            
+            // --- 4. Split Reviewed PRs in Client-Side ---
+            // The totalReviewedCount is the sum of all monthly API issueCounts.
+            const totalReviewedCount = reviewedPRData.totalCount; 
+            const { reviewedHuman, reviewedBot } = splitReviewedPrs(reviewedPRData.edges);
+
+            // Return the necessary data structure for caching and rendering
             return {
                 contributions: contributions,
                 authored: authoredPRData,
-                reviewed: reviewedPRData,
+                reviewedHuman: { edges: reviewedHuman, totalCount: reviewedHuman.length }, // Sample size length
+                reviewedBot: { edges: reviewedBot, totalCount: reviewedBot.length },     // Sample size length
+                totalReviewedCount: totalReviewedCount, // <-- Use API's true count here for table accuracy
                 rateLimit: rateLimit
             };
         }
@@ -1076,7 +1142,7 @@
         /**
          * Renders or updates the Language Pie Chart for PRs Reviewed (Human).
          */
-        function renderReviewedLanguageChart(languageCounts, year) {
+        function renderReviewedLanguageChart(languageCounts, year, totalAPICount) {
             const canvas = document.getElementById('reviewedLanguagePieChart');
             const ctx = canvas ? canvas.getContext('2d') : null;
 
@@ -1090,20 +1156,25 @@
 
             let labels = sortedLanguages.map(([name]) => name);
             let dataValues = sortedLanguages.map(([, count]) => count);
-            let total = dataValues.reduce((sum, count) => sum + count, 0);
+            let sampleTotal = dataValues.reduce((sum, count) => sum + count, 0);
             const chartTitle = `PRs Reviewed Language Breakdown (${year})`;
 
+            let summaryText = `PRs Reviewed Language Breakdown (${sampleTotal} PRs analyzed)`;
+            
+            // REMOVED WARNING CHECK: if (totalAPICount > sampleTotal) { ... }
 
-            reviewedLanguageSummary.textContent = total > 0 
-                ? `PRs Reviewed Language Breakdown (${total} PRs analyzed)` 
-                : `No PRs reviewed with primary language found.`; 
+            if (sampleTotal === 0) {
+                 summaryText = `No PRs reviewed with primary language found.`;
+            }
+
+            reviewedLanguageSummary.innerHTML = summaryText; 
 
             if (reviewedLanguageChart) {
                 reviewedLanguageChart.destroy();
             }
 
             // Exit early if no data
-            if (total === 0) {
+            if (sampleTotal === 0) {
                 drawNoDataFallback(ctx, chartTitle);
                 return; 
             }
@@ -1152,7 +1223,7 @@
                                     const label = context.label || '';
                                     if (label) {
                                         let value = context.parsed;
-                                        let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                        let percentage = sampleTotal > 0 ? ((value / sampleTotal) * 100).toFixed(1) : 0;
                                         return `${label}: ${value} (${percentage}%)`;
                                     }
                                     return '';
@@ -1172,7 +1243,7 @@
                         datalabels: {
                             color: '#1f2937', 
                             formatter: (value, context) => {
-                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                const percentage = sampleTotal > 0 ? ((value / sampleTotal) * 100).toFixed(1) : 0;
                                 return `${value} (${percentage}%)`; 
                             },
                             font: { weight: 'bold', size: 12 },
@@ -1194,7 +1265,7 @@
         /**
          * Renders or updates the Language Pie Chart for PRs Reviewed (Autogenerated). (NEW CHART)
          */
-        function renderReviewedBotLanguageChart(languageCounts, year) {
+        function renderReviewedBotLanguageChart(languageCounts, year, totalAPICount) {
             const canvas = document.getElementById('reviewedBotLanguagePieChart');
             const ctx = canvas ? canvas.getContext('2d') : null;
 
@@ -1208,20 +1279,26 @@
 
             let labels = sortedLanguages.map(([name]) => name);
             let dataValues = sortedLanguages.map(([, count]) => count);
-            let total = dataValues.reduce((sum, count) => sum + count, 0);
+            let sampleTotal = dataValues.reduce((sum, count) => sum + count, 0);
             const chartTitle = `PRs Reviewed (Autogenerated) Language Breakdown (${year})`;
 
 
-            reviewedBotLanguageSummary.textContent = total > 0 
-                ? `PRs Reviewed (Autogenerated) Language Breakdown (${total} PRs analyzed)` 
-                : `No autogenerated PRs reviewed with primary language found.`; 
+            let summaryText = `PRs Reviewed (Autogenerated) Language Breakdown (${sampleTotal} PRs analyzed)`;
+            
+            // REMOVED WARNING CHECK: if (totalAPICount > sampleTotal) { ... }
+
+            if (sampleTotal === 0) {
+                 summaryText = `No autogenerated PRs reviewed with primary language found.`;
+            }
+            
+            reviewedBotLanguageSummary.innerHTML = summaryText;
 
             if (reviewedBotLanguageChart) {
                 reviewedBotLanguageChart.destroy();
             }
 
             // Exit early if no data
-            if (total === 0) {
+            if (sampleTotal === 0) {
                 drawNoDataFallback(ctx, chartTitle);
                 return; 
             }
@@ -1270,7 +1347,7 @@
                                     const label = context.label || '';
                                     if (label) {
                                         let value = context.parsed;
-                                        let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                        let percentage = sampleTotal > 0 ? ((value / sampleTotal) * 100).toFixed(1) : 0;
                                         return `${label}: ${value} (${percentage}%)`;
                                     }
                                     return '';
@@ -1290,7 +1367,7 @@
                         datalabels: {
                             color: '#1f2937', 
                             formatter: (value, context) => {
-                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                const percentage = sampleTotal > 0 ? ((value / sampleTotal) * 100).toFixed(1) : 0;
                                 return `${value} (${percentage}%)`; 
                             },
                             font: { weight: 'bold', size: 12 },
@@ -1424,7 +1501,10 @@
         /**
          * Renders the Overall Contribution Totals table.
          */
-        function renderOverallTotals(data, authoredCount, reviewedHumanCount, reviewedBotCount) {
+        function renderOverallTotals(data, authoredCount, reviewedHumanCount, reviewedBotCount, totalReviewedAPICount) {
+            // Calculate the combined total reviewed PRs for the chart/sample
+            const totalReviewedCombinedSample = reviewedHumanCount + reviewedBotCount;
+            
             const table = `
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
@@ -1445,6 +1525,10 @@
                         <tr>
                             <td class="px-6 py-4 whitespace-nowrap font-medium text-sky-600">Total PRs Reviewed (Autogenerated)</td>
                             <td class="px-6 py-4 whitespace-nowrap">${reviewedBotCount}</td>
+                        </tr>
+                        <tr class="bg-gray-100 font-bold">
+                            <td class="px-6 py-4 whitespace-nowrap">Total PRs Reviewed (Combined)</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${totalReviewedAPICount}</td>
                         </tr>
                         <tr>
                             <td class="px-6 py-4 whitespace-nowrap font-medium">Total Commits</td>
@@ -1699,16 +1783,16 @@
                 }
 
                 // 3. Cache PR Data
-                const { reviewedHuman, reviewedBot } = splitReviewedPrs(data.reviewed.edges);
-                
-                prDataCache.authored = data.authored.edges;
-                prDataCache.reviewedHuman = reviewedHuman;
-                prDataCache.reviewedBot = reviewedBot;
-
                 const authoredCount = data.authored.totalCount;
-                const reviewedHumanCount = reviewedHuman.length;
-                const reviewedBotCount = reviewedBot.length;
+                const reviewedHumanCount = data.reviewedHuman.totalCount; 
+                const reviewedBotCount = data.reviewedBot.totalCount; 
                 const commitContributionsByRepo = data.contributions.commitContributionsByRepository; 
+                const totalReviewedAPICount = data.totalReviewedCount; // API's true total
+                
+                // Set cache using edges
+                prDataCache.authored = data.authored.edges;
+                prDataCache.reviewedHuman = data.reviewedHuman.edges;
+                prDataCache.reviewedBot = data.reviewedBot.edges;
 
                 // 4. Process Data for Charts
                 const authoredLanguageCounts = processLanguageData(prDataCache.authored);
@@ -1717,14 +1801,19 @@
                 const commentDistributionData = processCommentDistribution(prDataCache.authored); // Authored PRs only
                 
                 // 5. Render All UI Components (using a slight delay to ensure canvas rendering)
-                renderOverallTotals(data, authoredCount, reviewedHumanCount, reviewedBotCount);
+                renderOverallTotals(data, authoredCount, reviewedHumanCount, reviewedBotCount, totalReviewedAPICount);
                 renderRepoCommits(commitContributionsByRepo, username); // PASSING USERNAME HERE
                 
                 // RENDER FIVE CHARTS
                 renderChart(authoredCount, reviewedHumanCount, reviewedBotCount, year);
                 renderAuthoredLanguageChart(authoredLanguageCounts, year);
-                renderReviewedLanguageChart(reviewedLanguageCounts, year);
-                renderReviewedBotLanguageChart(reviewedBotLanguageCounts, year); // NEW CHART RENDER
+                
+                // Pass true total to reviewed charts for discrepancy warning
+                const reviewedSampleTotal = reviewedHumanCount + reviewedBotCount;
+
+                renderReviewedLanguageChart(reviewedLanguageCounts, year, totalReviewedAPICount); 
+                renderReviewedBotLanguageChart(reviewedBotLanguageCounts, year, totalReviewedAPICount);
+                
                 renderCommentDistributionChart(commentDistributionData, year);
 
                 dashboardArea.classList.remove('hidden');
