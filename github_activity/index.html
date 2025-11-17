@@ -17,7 +17,7 @@
         /* Custom styles for a light, professional look */
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6; /* Very light gray background */
+            background-color: #f3f6f6; /* Very light gray background */
             color: #1f2937; /* Dark gray text */
             min-height: 100vh;
         }
@@ -49,6 +49,38 @@
                 min-height: 350px; /* Ensure columns have a minimum height for all charts */
             }
         }
+        /* Custom styles for the tag input */
+        #orgsContainer {
+            min-height: 42px;
+            padding: 4px;
+        }
+        .org-tag {
+            background-color: #DBEAFE; /* Blue-100 */
+            color: #1D4ED8; /* Blue-700 */
+            border-radius: 9999px; /* Full rounded */
+            padding: 4px 8px;
+            font-size: 0.875rem; /* text-sm */
+            font-weight: 500; /* font-medium */
+            margin-right: 4px;
+            margin-bottom: 4px;
+            display: inline-flex;
+            align-items: center;
+        }
+        .org-tag button {
+            margin-left: 4px;
+            font-size: 0.75rem; /* text-xs */
+            line-height: 1;
+            cursor: pointer;
+            color: #1D4ED8;
+            padding: 0 2px;
+        }
+        #orgsInput {
+            border: none;
+            outline: none;
+            flex-grow: 1;
+            padding: 0 4px;
+            min-width: 50px;
+        }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -62,8 +94,12 @@
         <!-- Input Form Card -->
         <div class="card p-6 rounded-xl">
             <h2 class="text-2xl font-semibold mb-4 border-b border-gray-300 pb-2 text-blue-600">Configuration</h2>
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end"> 
-                <div class="col-span-1">
+            <div class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end"> 
+                
+                <!-- ROW 1: PAT, USERNAME, YEAR, BUTTONS -->
+                
+                <!-- PAT Input (Columns 1-2) -->
+                <div class="col-span-2">
                     <label for="pat" class="block text-sm font-medium mb-1 text-gray-700 flex justify-between items-center">
                         GitHub PAT (Read Access)
                         <svg onclick="showPatInfoModal()" class="w-4 h-4 text-blue-500 cursor-pointer hover:text-blue-700 transition" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
@@ -72,26 +108,45 @@
                     </label>
                     <input type="password" id="pat" placeholder="github_pat_..." class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
                 </div>
-                <div class="col-span-1">
+                
+                <!-- Username Input (Columns 3-4) -->
+                <div class="col-span-2">
                     <label for="username" class="block text-sm font-medium mb-1 text-gray-700">GitHub Username</label>
-                    <input type="text" id="username" value="" placeholder="username" class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
+                    <input type="text" id="username" value="" placeholder="octocat" class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
                 </div>
+                
+                <!-- Year Selector (Column 5) -->
                 <div class="col-span-1">
                     <label for="yearSelector" class="block text-sm font-medium mb-1 text-gray-700">Year</label>
                     <select id="yearSelector" class="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500">
                         <!-- Options will be populated by JS -->
                     </select>
                 </div>
+
+                <!-- Generate Button (Column 6) -->
                 <div class="col-span-1">
                     <button id="generateBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:bg-gray-400" onclick="generateDashboard()">
                         Generate Dashboard
                     </button>
                 </div>
-                <div class="col-span-1">
+                
+                <!-- ROW 2: ORGANIZATION FILTER (Full width below controls) -->
+                <div class="col-span-4">
+                    <label for="orgsContainer" class="block text-sm font-medium mb-1 text-gray-700">Filter by Organizations</label>
+                    <div id="orgsContainer" class="w-full rounded-lg bg-white border border-gray-300 flex flex-wrap items-center focus-within:ring-blue-500 focus-within:border-blue-500">
+                        <!-- Org tags go here -->
+                        <input type="text" id="orgsInput" placeholder="Add org name and press Enter">
+                    </div>
+                </div>
+
+                <!-- Download Button (Columns 5-6, aligned with org filter row) -->
+                <div class="col-span-2 flex space-x-2 self-end">
                     <button id="downloadBtn" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:bg-gray-400 hidden" onclick="downloadDashboardReport()">
-                        Download Report
+                        <svg class="w-5 h-5 inline-block mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Report
                     </button>
                 </div>
+
             </div>
             <p id="rateLimit" class="text-xs text-gray-500 mt-3 text-right hidden">Rate Limit: <span id="rateRemaining"></span> remaining.</p>
         </div>
@@ -146,9 +201,10 @@
             </div>
             
             <!-- Table Container Grid -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                
                 <!-- Column 1: Overall Contribution Totals Table -->
-                <div class="col-span-1 max-w-xl mx-auto lg:mx-0">
+                <div class="col-span-1">
                     <div class="card p-6 rounded-xl"> 
                         <h3 class="text-xl font-semibold mb-4 text-blue-600 border-b pb-2">Overall Contribution Totals</h3>
                         <div id="overallTotalsTable">
@@ -157,8 +213,18 @@
                     </div>
                 </div>
 
-                <!-- Column 2: New Commit Contributions Table -->
-                <div class="col-span-1 max-w-xl mx-auto lg:mx-0">
+                <!-- Column 2: Code Volume Table (Moved to own column) -->
+                <div class="col-span-1">
+                    <div class="card p-6 rounded-xl"> 
+                        <h3 class="text-xl font-semibold mb-4 text-blue-600 border-b pb-2">Authored PR Code Volume</h3>
+                        <div id="codeVolumeTable">
+                            <!-- Code volume content rendered here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Column 3: Commit Contributions Table -->
+                <div class="col-span-1">
                     <div class="card p-6 rounded-xl">
                         <h3 class="text-xl font-semibold mb-4 text-blue-600 border-b pb-2">Commit Contributions (Top 50 Repos)</h3>
                         <div id="repoCommitTable">
@@ -242,9 +308,14 @@
         const BOT_USERNAMES = [
             'renovate-bot', 'cloud-java-bot', 'cloud-sdk-librarian-robot', 'gcf-owl-bot', 'release-please', 'dependabot'
         ];
+        
+        // DEFAULT ORGS
+        const DEFAULT_ORGS = ['googleapis', 'GoogleCloudPlatform', 'cloudspannerecosystem'];
 
         const patInput = document.getElementById('pat');
         const usernameInput = document.getElementById('username');
+        const orgsContainer = document.getElementById('orgsContainer'); // NEW CONTAINER
+        const orgsInput = document.getElementById('orgsInput'); // NEW INPUT FIELD FOR TAGS
         const yearSelector = document.getElementById('yearSelector');
         const generateBtn = document.getElementById('generateBtn');
         const downloadBtn = document.getElementById('downloadBtn');
@@ -254,7 +325,7 @@
         const totalSummary = document.getElementById('totalSummary');
         const languageSummary = document.getElementById('languageSummary');
         const reviewedLanguageSummary = document.getElementById('reviewedLanguageSummary');
-        const reviewedBotLanguageSummary = document.getElementById('reviewedBotLanguageSummary'); // NEW SUMMARY
+        const reviewedBotLanguageSummary = document.getElementById('reviewedBotLanguageSummary'); 
         const summaryTitle = document.getElementById('summaryTitle');
         const rateLimitDisplay = document.getElementById('rateLimit');
         const rateRemainingDisplay = document.getElementById('rateRemaining');
@@ -262,18 +333,14 @@
         const modalTitle = document.getElementById('modalTitle');
         const prListContainer = document.getElementById('prListContainer');
         
-        // NEW chart summary element
         const commentSummary = document.getElementById('commentSummary');
         
-        // NEW chart instance for bots
         let reviewedBotLanguageChart = null; 
-        
-        // NEW chart instance for bots
         const reviewedBotLanguagePieChart = document.getElementById('reviewedBotLanguagePieChart');
         
-        // NEW table containers
         const overallTotalsTable = document.getElementById('overallTotalsTable');
         const repoCommitTable = document.getElementById('repoCommitTable'); 
+        const codeVolumeTable = document.getElementById('codeVolumeTable'); // NEW TABLE ELEMENT
         const patInfoModal = document.getElementById('patInfoModal');
         
         let prChart = null;
@@ -286,6 +353,55 @@
             reviewedHuman: [], 
             reviewedBot: []   
         }; 
+
+        // --- Tag Input Management ---
+        
+        /** Stores the list of active organization tags. */
+        let activeOrgs = [];
+
+        function renderOrgTags() {
+            // Clear existing tags but keep the input field
+            const existingTags = orgsContainer.querySelectorAll('.org-tag');
+            existingTags.forEach(tag => tag.remove());
+            
+            // Insert tags before the input field
+            activeOrgs.forEach(org => {
+                const tag = document.createElement('div');
+                tag.className = 'org-tag';
+                tag.textContent = org;
+                tag.innerHTML += `<button onclick="removeOrgTag('${org}')">&times;</button>`;
+                orgsContainer.insertBefore(tag, orgsInput);
+            });
+            orgsInput.placeholder = activeOrgs.length === 0 ? "Add org name and press Enter" : "";
+        }
+
+        function addOrgTag(orgName) {
+            orgName = orgName.trim();
+            if (orgName && !activeOrgs.includes(orgName)) {
+                activeOrgs.push(orgName);
+                renderOrgTags();
+            }
+        }
+
+        function removeOrgTag(orgName) {
+            activeOrgs = activeOrgs.filter(org => org !== orgName);
+            renderOrgTags();
+        }
+
+        function getOrgsQueryFragment() {
+            if (activeOrgs.length === 0) return '';
+            return ' ' + activeOrgs.map(org => `org:${org.trim()}`).join(' ');
+        }
+        
+        // Event listener for the input field (using Enter key)
+        orgsInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addOrgTag(orgsInput.value);
+                orgsInput.value = '';
+            }
+        });
+
 
         // --- Utility Functions ---
 
@@ -559,6 +675,8 @@
                                         login
                                     }
                                     reviewThreads { totalCount } 
+                                    additions
+                                    deletions
                                 }
                             }
                         }
@@ -602,13 +720,14 @@
         /**
          * Fetches PRs by slicing the time range into monthly chunks to bypass the 1000-item search limit.
          */
-        async function fetchReviewedPRsByChunk(token, year, username) {
+        async function fetchReviewedPRsByChunk(token, year, username, orgsQuery) {
             const ranges = getMonthlyDateRanges(year);
             const reviewedPRs = [];
             let apiReportedTotalCount = 0; // Use to track the cumulative issueCount sum
 
             for (const range of ranges) {
-                const monthlyQuery = `is:pr reviewed-by:${username} -author:${username} created:${range.start}..${range.end}`;
+                // ADD ORGS QUERY HERE
+                const monthlyQuery = `is:pr reviewed-by:${username} -author:${username} created:${range.start}..${range.end}${orgsQuery}`;
                 
                 // Note: We use the pagination logic on the monthly query itself
                 const monthlyResult = await fetchAllPRs(token, monthlyQuery);
@@ -634,7 +753,7 @@
         /**
          * Fetches PR and Commit data from GitHub using GraphQL.
          */
-        async function fetchGitHubData(token, username, year) {
+        async function fetchGitHubData(token, username, year, orgsQuery) {
             const { dateOnlyStart, dateOnlyEnd, dateTimeStart, dateTimeEnd } = getCurrentYearDates(year);
             const dateRangeSearch = `created:${dateOnlyStart}..${dateOnlyEnd}`;
             
@@ -666,7 +785,8 @@
                     }
                 `),
                 // 2. Fetch ALL PRs Authored (Merged only, Paginated)
-                fetchAllPRs(token, `is:pr is:merged author:${username} ${dateRangeSearch}`)
+                // ADD ORGS QUERY HERE
+                fetchAllPRs(token, `is:pr is:merged author:${username} ${dateRangeSearch}${orgsQuery}`)
             ]);
 
             const [nonPaginatedData, authoredPRData] = await totalsAndAuthoredPromises;
@@ -675,7 +795,7 @@
             const rateLimit = nonPaginatedData.rateLimit;
             
             // 3. Fetch ALL PRs Reviewed (Paginated + Chunked)
-            const reviewedPRData = await fetchReviewedPRsByChunk(token, year, username);
+            const reviewedPRData = await fetchReviewedPRsByChunk(token, year, username, orgsQuery);
             
             // --- 4. Split Reviewed PRs in Client-Side ---
             // The totalReviewedCount is the sum of all monthly API issueCounts.
@@ -713,6 +833,8 @@
                     const authorLogin = node.author?.login || 'N/A';
                     
                     const reviewThreadCount = node.reviewThreads ? node.reviewThreads.totalCount : 0;
+                    const additions = node.additions || 0;
+                    const deletions = node.deletions || 0;
                     
                     const isAutogenerated = BOT_USERNAMES.includes(authorLogin.toLowerCase());
                     
@@ -722,10 +844,12 @@
                                 <span class="font-semibold text-gray-800 break-words max-w-full sm:max-w-xs md:max-w-md">${node.title}</span>
                                 <span class="text-xs text-gray-500 mt-1 sm:mt-0 whitespace-nowrap">${date}</span>
                             </div>
-                            <div class="flex items-center text-sm mt-1 space-x-3">
+                            <div class="flex items-center text-sm mt-1 space-x-3 flex-wrap">
                                 <span class="text-blue-600 font-medium">${repoName}</span>
                                 <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">${language}</span>
                                 ${reviewThreadCount > 0 ? `<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-xs">${reviewThreadCount} replies</span>` : ''}
+                                ${node.additions !== undefined ? `<span class="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs">+${additions}</span>` : ''}
+                                ${node.deletions !== undefined ? `<span class="bg-red-100 text-red-800 px-2 py-0.5 rounded-full text-xs">-${deletions}</span>` : ''}
                                 ${isAutogenerated ? `<span class="bg-red-100 text-red-800 px-2 py-0.5 rounded-full text-xs">Reviewed (Autogenerated): ${authorLogin}</span>` : `<span class="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs">Author: ${authorLogin}</span>`}
                             </div>
                         </a>
@@ -1161,8 +1285,6 @@
 
             let summaryText = `PRs Reviewed Language Breakdown (${sampleTotal} PRs analyzed)`;
             
-            // REMOVED WARNING CHECK: if (totalAPICount > sampleTotal) { ... }
-
             if (sampleTotal === 0) {
                  summaryText = `No PRs reviewed with primary language found.`;
             }
@@ -1285,8 +1407,6 @@
 
             let summaryText = `PRs Reviewed (Autogenerated) Language Breakdown (${sampleTotal} PRs analyzed)`;
             
-            // REMOVED WARNING CHECK: if (totalAPICount > sampleTotal) { ... }
-
             if (sampleTotal === 0) {
                  summaryText = `No autogenerated PRs reviewed with primary language found.`;
             }
@@ -1502,9 +1622,6 @@
          * Renders the Overall Contribution Totals table.
          */
         function renderOverallTotals(data, authoredCount, reviewedHumanCount, reviewedBotCount, totalReviewedAPICount) {
-            // Calculate the combined total reviewed PRs for the chart/sample
-            const totalReviewedCombinedSample = reviewedHumanCount + reviewedBotCount;
-            
             const table = `
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
@@ -1541,22 +1658,73 @@
         }
 
         /**
+         * Renders the Authored PR Code Volume table (NEW TABLE).
+         */
+        function renderCodeVolumeTable(authoredPrs, year) {
+             let totalAdditions = 0;
+             let totalDeletions = 0;
+             
+             authoredPrs.forEach(pr => {
+                 totalAdditions += pr.node.additions || 0;
+                 totalDeletions += pr.node.deletions || 0;
+             });
+
+             const totalModified = totalAdditions + totalDeletions; // Lines added + Lines removed
+             
+             const table = `
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metric</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lines</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200 text-gray-800">
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap font-medium text-green-600">Lines Added</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right">${totalAdditions.toLocaleString()}</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap font-medium text-red-600">Lines Removed</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right">${totalDeletions.toLocaleString()}</td>
+                        </tr>
+                        <tr class="font-bold">
+                            <td class="px-6 py-4 whitespace-nowrap">Total Lines Modified</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right">${totalModified.toLocaleString()}</td>
+                        </tr>
+                    </tbody>
+                </table>
+             `;
+             
+             codeVolumeTable.innerHTML = table;
+        }
+
+
+        /**
          * Renders the Commit Contributions Per Repository table.
          */
-        function renderRepoCommits(contributionsByRepo, currentUsername) {
+        function renderRepoCommits(contributionsByRepo, currentUsername, activeOrgs) {
             if (!contributionsByRepo || contributionsByRepo.length === 0) {
                 repoCommitTable.innerHTML = '<p class="text-center text-gray-500 py-4">No commit contributions found.</p>';
                 return;
             }
             
-            // Filter: Exclude repositories owned by the current user
+            // Filter 1: Exclude repositories owned by the current user
             const externalContributions = contributionsByRepo
                 .filter(item => {
                     const owner = item.repository.nameWithOwner.split('/')[0];
                     return owner.toLowerCase() !== currentUsername.toLowerCase();
                 });
+                
+            // Filter 2: Enforce Organization Filter (client-side enforcement of ORG filter on commits)
+            const filteredContributions = activeOrgs.length > 0 ? externalContributions
+                .filter(item => {
+                    const owner = item.repository.nameWithOwner.split('/')[0];
+                    return activeOrgs.map(org => org.toLowerCase()).includes(owner.toLowerCase());
+                }) : externalContributions;
 
-            const sortedContributions = externalContributions
+
+            const sortedContributions = filteredContributions
                 // Sort by commit count descending
                 .sort((a, b) => b.contributions.totalCount - a.contributions.totalCount);
 
@@ -1605,12 +1773,11 @@
             const reportTitle = `GitHub Activity Report - ${username} (${year})`;
 
             // Get IDs of all chart containers (the parent .card div)
-            // Need to adjust to account for the new fifth chart (reviewedBotLanguagePieChart)
             const chartContainers = [
                 document.getElementById('prPieChart').closest('.card'),
                 document.getElementById('languagePieChart').closest('.card'),
                 document.getElementById('reviewedLanguagePieChart').closest('.card'),
-                document.getElementById('reviewedBotLanguagePieChart').closest('.card'), // NEW CHART
+                document.getElementById('reviewedBotLanguagePieChart').closest('.card'),
                 document.getElementById('commentBarChart').closest('.card')
             ];
             
@@ -1618,6 +1785,7 @@
 
             // Map chart containers to image promises
             const imagePromises = chartContainers.map(container => {
+                // Ensure the chart has been rendered and is visible
                 if (!container || container.style.display === 'none' || container.parentElement.classList.contains('hidden')) {
                      return Promise.resolve(null);
                 }
@@ -1645,7 +1813,7 @@
                         'PRs Authored vs. Reviewed',
                         'PRs Authored Language Breakdown',
                         'PRs Reviewed Language Breakdown',
-                        'PRs Reviewed (Autogenerated) Language Breakdown', // NEW NAME
+                        'PRs Reviewed (Autogenerated) Language Breakdown',
                         'PRs Authored Review Reply Distribution'
                     ];
                     
@@ -1662,8 +1830,9 @@
             });
 
             // Get table content (clone and remove Tailwind classes for clean HTML export)
-            const overallTableContent = overallTotalsTable.innerHTML.replace(/class="[^"]*"/g, '');
-            const commitTableContent = repoCommitTable.innerHTML.replace(/class="[^"]*"/g, '');
+            const overallTableContent = document.getElementById('overallTotalsTable').innerHTML.replace(/class="[^"]*"/g, '');
+            const commitTableContent = document.getElementById('repoCommitTable').innerHTML.replace(/class="[^"]*"/g, '');
+            const codeVolumeContent = document.getElementById('codeVolumeTable').innerHTML.replace(/class="[^"]*"/g, '');
             
             // Define print-friendly styles for the generated document
             const reportStyle = `
@@ -1719,6 +1888,11 @@
                         ${overallTableContent.replace(/<table/g, '<table class="report-table"')}
                     </div>
 
+                    <h2>Authored PR Code Volume</h2>
+                    <div class="report-table-wrapper">
+                        ${codeVolumeContent.replace(/<table/g, '<table class="report-table"')}
+                    </div>
+
                     <h2>Commit Contributions (Top 50 Repositories)</h2>
                     <div class="report-table-wrapper">
                         ${commitTableContent.replace(/<table/g, '<table class="report-table"')}
@@ -1771,10 +1945,14 @@
 
             generateBtn.disabled = true;
             generateBtn.textContent = `Generating Dashboard for ${year}...`;
+            
+            // Build the organization filter query fragment
+            const orgsQuery = getOrgsQueryFragment();
+
 
             try {
                 // 1. Fetch Data
-                const data = await fetchGitHubData(token, username, year);
+                const data = await fetchGitHubData(token, username, year, orgsQuery);
 
                 // 2. Update Rate Limit Display
                 if (data.rateLimit) {
@@ -1802,7 +1980,8 @@
                 
                 // 5. Render All UI Components (using a slight delay to ensure canvas rendering)
                 renderOverallTotals(data, authoredCount, reviewedHumanCount, reviewedBotCount, totalReviewedAPICount);
-                renderRepoCommits(commitContributionsByRepo, username); // PASSING USERNAME HERE
+                renderCodeVolumeTable(prDataCache.authored, year); // NEW TABLE RENDER
+                renderRepoCommits(commitContributionsByRepo, username, activeOrgs); // PASSING USERNAME AND ORGS HERE
                 
                 // RENDER FIVE CHARTS
                 renderChart(authoredCount, reviewedHumanCount, reviewedBotCount, year);
@@ -1824,6 +2003,12 @@
                 if (!window.location.href.startsWith('blob:')) {
                     const url = new URL(window.location.href);
                     url.searchParams.set('username', username);
+                    // Update orgs param for persistence
+                    if (activeOrgs.length > 0) {
+                         url.searchParams.set('orgs', activeOrgs.join(','));
+                    } else {
+                         url.searchParams.delete('orgs');
+                    }
                     window.history.replaceState({}, '', url.toString());
                 }
                 // ------------------------------------------------------
@@ -1849,16 +2034,26 @@
         // --- Initial Setup ---
         window.onload = function () {
             populateYearSelector();
-
-            // Logic to check for URL query parameter 'username'
+            
+            // Populate default orgs and/or load from URL
             const urlParams = new URLSearchParams(window.location.search);
             const urlUsername = urlParams.get('username');
+            const urlOrgs = urlParams.get('orgs');
 
             if (urlUsername) {
-                // Overwrite the default value with the URL parameter if it exists
                 usernameInput.value = urlUsername;
             }
             
+            // Use URL orgs if present, otherwise use defaults
+            const initialOrgs = urlOrgs ? urlOrgs.split(',') : DEFAULT_ORGS;
+            activeOrgs = initialOrgs.map(org => org.trim()).filter(org => org.length > 0);
+            renderOrgTags();
+
+
+            // Expose public functions to global scope
+            window.removeOrgTag = removeOrgTag;
+            window.addOrgTag = addOrgTag;
+
             // Add Esc key listener to close modals
             document.addEventListener('keydown', function(event) {
                 if (event.key === 'Escape') {
